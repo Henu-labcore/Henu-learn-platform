@@ -60,6 +60,9 @@
         </div>
       </div>
 
+      <!-- 新增计划摘要；原卡片、数据面板及实验事件保持不变。 -->
+      <LearningPlanSummary v-if="activeSection === 'cards'" />
+
       <keep-alive>
         <KnowledgeCardsSection
           v-if="activeSection === 'cards'"
@@ -131,6 +134,7 @@ import { getLearningItems, getLearningItemPreview } from '@/api/knowledge'
 import ExperimentOverlay from '@/components/ExperimentOverlay.vue'
 import KnowledgeCardsSection from '@/components/knowledge/KnowledgeCardsSection.vue'
 import DashboardSection from '@/components/knowledge/DashboardSection.vue'
+import LearningPlanSummary from '@/components/knowledge/LearningPlanSummary.vue'
 
 const router = useRouter()
 const route = useRoute()
