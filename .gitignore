@@ -38,6 +38,7 @@ ops/labcore-hotfix-20260614/data/
 ops/labcore-learning-json-import/
 
 # Local test/extracted artifacts
+test-results/
 boottest.*
 mobile-test.html
 start-mobile-test.ps1

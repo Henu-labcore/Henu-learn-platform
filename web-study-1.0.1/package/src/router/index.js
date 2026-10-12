@@ -2,6 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const adminRoutes = [
+  // 新增风险看板沿用原管理员路由注册和权限保护。
+  {
+    path: 'admin-learning-risks', name: 'AdminLearningRisks',
+    component: () => import('@/views/AdminLearningRisks.vue'),
+    meta: { title: '学习计划风险', requiresAuth: true, requiresAdmin: true }
+  },
   {
     path: 'users',
     name: 'UserManagement',
@@ -65,6 +71,16 @@ const routes = [
     redirect: '/knowledge',
     meta: { requiresAuth: true },
     children: [
+      {
+        path: 'favorites', name: 'MyFavorites',
+        component: () => import('@/views/MyFavorites.vue'),
+        meta: { title: '我的收藏', requiresAuth: true }
+      },
+      {
+        path: 'learning-plan', name: 'LearningPlans',
+        component: () => import('@/views/LearningPlans.vue'),
+        meta: { title: '学习计划', requiresAuth: true }
+      },
       {
         path: 'knowledge',
         name: 'KnowledgeMain',
