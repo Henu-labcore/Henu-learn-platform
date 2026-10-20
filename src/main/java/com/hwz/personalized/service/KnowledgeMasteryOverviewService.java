@@ -65,6 +65,179 @@ public class KnowledgeMasteryOverviewService {
     }
 
     /**
+     * 查询每个启用知识点的学生掌握度聚合。
+     *
+     * 用于预警页"知识点平均掌握度"图：
+     * - contactCount：已接触（非 UNKNOWN）学生数；
+     * - avgMasteryScore：已接触学生的平均掌握度；
+     * - 各风险等级计数：全部学生记录；
+     * - 无任何学生记录的知识点也会出现，前端显示"暂无数据"。
+     */
+    public List<Map<String, Object>>
+    getKnowledgePointSummary() {
+        String sql =
+                "SELECT "
+                        + "kp.knowledge_point_id, "
+                        + "kp.code, "
+                        + "kp.name, "
+                        + "kp.category, "
+
+                        + "COUNT( "
+                        + "    DISTINCT CASE "
+                        + "        WHEN skm.risk_level <> 'UNKNOWN' "
+                        + "        THEN skm.student_id "
+                        + "        ELSE NULL "
+                        + "    END "
+                        + ") AS contact_count, "
+
+                        + "ROUND( "
+                        + "    AVG( "
+                        + "        CASE "
+                        + "            WHEN skm.risk_level <> 'UNKNOWN' "
+                        + "            THEN skm.mastery_score "
+                        + "            ELSE NULL "
+                        + "        END "
+                        + "    ), 2 "
+                        + ") AS avg_mastery_score, "
+
+                        + "SUM( "
+                        + "    CASE "
+                        + "        WHEN skm.risk_level = 'HIGH' "
+                        + "        THEN 1 "
+                        + "        ELSE 0 "
+                        + "    END "
+                        + ") AS high_count, "
+
+                        + "SUM( "
+                        + "    CASE "
+                        + "        WHEN skm.risk_level = 'MEDIUM' "
+                        + "        THEN 1 "
+                        + "        ELSE 0 "
+                        + "    END "
+                        + ") AS medium_count, "
+
+                        + "SUM( "
+                        + "    CASE "
+                        + "        WHEN skm.risk_level = 'LOW' "
+                        + "        THEN 1 "
+                        + "        ELSE 0 "
+                        + "    END "
+                        + ") AS low_count, "
+
+                        + "SUM( "
+                        + "    CASE "
+                        + "        WHEN skm.risk_level = 'UNKNOWN' "
+                        + "        THEN 1 "
+                        + "        ELSE 0 "
+                        + "    END "
+                        + ") AS unknown_count "
+
+                        + "FROM knowledge_point kp "
+
+                        + "LEFT JOIN student_knowledge_mastery skm "
+                        + "    ON skm.knowledge_point_id = "
+                        + "       kp.knowledge_point_id "
+                        + "   AND skm.student_id IN ( "
+                        + "       SELECT user_id "
+                        + "       FROM sys_user "
+                        + "       WHERE role = 'USER' "
+                        + "         AND status = 'ACTIVE' "
+                        + "   ) "
+
+                        + "WHERE kp.status = 'ACTIVE' "
+
+                        + "GROUP BY "
+                        + "    kp.knowledge_point_id, "
+                        + "    kp.code, "
+                        + "    kp.name, "
+                        + "    kp.category "
+
+                        + "ORDER BY "
+                        + "    kp.sort_order ASC, "
+                        + "    kp.knowledge_point_id ASC";
+
+        return jdbcTemplate.query(
+                sql,
+                (resultSet, rowNumber) -> {
+                    Map<String, Object> row =
+                            new LinkedHashMap<>();
+
+                    row.put(
+                            "knowledgePointId",
+                            resultSet.getLong(
+                                    "knowledge_point_id"
+                            )
+                    );
+
+                    row.put(
+                            "code",
+                            resultSet.getString(
+                                    "code"
+                            )
+                    );
+
+                    row.put(
+                            "name",
+                            resultSet.getString(
+                                    "name"
+                            )
+                    );
+
+                    row.put(
+                            "category",
+                            resultSet.getString(
+                                    "category"
+                            )
+                    );
+
+                    row.put(
+                            "contactCount",
+                            resultSet.getInt(
+                                    "contact_count"
+                            )
+                    );
+
+                    row.put(
+                            "avgMasteryScore",
+                            resultSet.getBigDecimal(
+                                    "avg_mastery_score"
+                            )
+                    );
+
+                    row.put(
+                            "highCount",
+                            resultSet.getInt(
+                                    "high_count"
+                            )
+                    );
+
+                    row.put(
+                            "mediumCount",
+                            resultSet.getInt(
+                                    "medium_count"
+                            )
+                    );
+
+                    row.put(
+                            "lowCount",
+                            resultSet.getInt(
+                                    "low_count"
+                            )
+                    );
+
+                    row.put(
+                            "unknownCount",
+                            resultSet.getInt(
+                                    "unknown_count"
+                            )
+                    );
+
+                    return row;
+                }
+        );
+    }
+
+    /**
      * 查询每名启用学生的掌握度统计。
      *
      * 即使学生尚未计算掌握度，也会出现在结果中。
@@ -120,7 +293,19 @@ public class KnowledgeMasteryOverviewService {
                         + ") AS unknown_risk_count, "
 
                         + "MAX(skm.calculated_at) "
-                        + "    AS last_calculated_at "
+                        + "    AS last_calculated_at, "
+
+                        + "( "
+                        + "    SELECT kp2.name "
+                        + "    FROM knowledge_point kp2 "
+                        + "    INNER JOIN student_knowledge_mastery skm2 "
+                        + "        ON skm2.knowledge_point_id = "
+                        + "           kp2.knowledge_point_id "
+                        + "    WHERE skm2.student_id = u.user_id "
+                        + "      AND skm2.risk_level <> 'UNKNOWN' "
+                        + "    ORDER BY skm2.mastery_score ASC "
+                        + "    LIMIT 1 "
+                        + ") AS weak_knowledge_point "
 
                         + "FROM sys_user u "
 
@@ -265,6 +450,13 @@ public class KnowledgeMasteryOverviewService {
                                     resultSet.getTimestamp(
                                             "last_calculated_at"
                                     )
+                            )
+                    );
+
+                    row.put(
+                            "weakKnowledgePoint",
+                            resultSet.getString(
+                                    "weak_knowledge_point"
                             )
                     );
 

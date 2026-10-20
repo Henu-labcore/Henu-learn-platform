@@ -11,17 +11,32 @@
           </p>
         </div>
 
-        <el-button
-          type="primary"
-          :loading="loading"
-          @click="fetchOverview"
-        >
-          <el-icon>
-            <Refresh />
-          </el-icon>
+        <div class="header-actions">
+          <el-button
+            type="warning"
+            plain
+            :loading="recalculatingAll"
+            @click="handleRecalculateAll"
+          >
+            <el-icon>
+              <TrendCharts />
+            </el-icon>
 
-          刷新数据
-        </el-button>
+            全部重算
+          </el-button>
+
+          <el-button
+            type="primary"
+            :loading="loading"
+            @click="fetchOverview"
+          >
+            <el-icon>
+              <Refresh />
+            </el-icon>
+
+            刷新数据
+          </el-button>
+        </div>
       </header>
 
       <div
@@ -160,8 +175,8 @@
           <article class="panel">
             <div class="panel-header">
               <div>
-                <h2>学生平均掌握度</h2>
-                <p>已计算学生按平均掌握度展示</p>
+                <h2>知识点平均掌握度</h2>
+                <p>已接触学生（非未知）在各知识点上的平均掌握度</p>
               </div>
             </div>
 
@@ -423,6 +438,31 @@
             </el-table-column>
 
             <el-table-column
+              label="薄弱知识点"
+              min-width="160"
+            >
+              <template #default="{ row }">
+                <span
+                  v-if="
+                    row.weakKnowledgePoint
+                    && row.masteryStatus
+                      === 'CALCULATED'
+                  "
+                  class="weak-point-text"
+                >
+                  {{ row.weakKnowledgePoint }}
+                </span>
+
+                <span
+                  v-else
+                  class="muted-text"
+                >
+                  {{ row.masteryStatus === 'CALCULATED' ? '未学习' : '尚未计算' }}
+                </span>
+              </template>
+            </el-table-column>
+
+            <el-table-column
               label="首次改密"
               width="100"
               align="center"
@@ -477,21 +517,6 @@
                   查看详情
                 </el-button>
 
-                <el-button
-                  type="success"
-                  link
-                  :loading="
-                    generatingStudentId
-                    === row.studentId
-                  "
-                  :disabled="
-                    row.masteryStatus
-                    !== 'CALCULATED'
-                  "
-                  @click="handleGeneratePlan(row)"
-                >
-                  生成计划
-                </el-button>
 
                 <el-button
                   type="warning"
@@ -598,6 +623,64 @@
               }}
             </template>
           </el-alert>
+
+          <section
+            v-if="detailSuggestions.length > 0"
+            class="suggestion-section"
+          >
+            <h4 class="suggestion-title">
+              学习建议
+            </h4>
+
+            <div
+              v-for="suggestion in detailSuggestions"
+              :key="suggestion.code"
+              class="suggestion-item"
+            >
+              <el-tag
+                :type="
+                  suggestion.riskLevel === 'HIGH'
+                    ? 'danger'
+                    : 'warning'
+                "
+                size="small"
+              >
+                {{
+                  suggestion.riskLevel === 'HIGH'
+                    ? '高风险'
+                    : '中风险'
+                }}
+              </el-tag>
+
+              <div class="suggestion-body">
+                <div class="suggestion-name">
+                  {{ suggestion.name }}
+                  （掌握度
+                  {{
+                    formatPercent(
+                      suggestion.masteryScore
+                    )
+                  }}）
+                </div>
+
+                <div class="suggestion-line">
+                  <span class="suggestion-label">
+                    原因：
+                  </span>
+
+                  {{ suggestion.reason }}
+                </div>
+
+                <div class="suggestion-line">
+                  <span class="suggestion-label">
+                    建议：
+                  </span>
+
+                  {{ suggestion.action }}
+                </div>
+              </div>
+            </div>
+          </section>
 
           <el-table
             :data="detailData.data"
@@ -731,338 +814,9 @@
           关闭
         </el-button>
 
-        <el-button
-          type="success"
-          :loading="
-            generatingStudentId
-            === detailStudentId
-          "
-          :disabled="!detailStudentId"
-          @click="
-            handleGeneratePlan(
-              detailData?.student
-            )
-          "
-        >
-          生成个性化学习计划
-        </el-button>
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="planResultVisible"
-      width="82%"
-      top="5vh"
-      destroy-on-close
-      title="个性化学习计划生成结果"
-    >
-      <div
-        v-loading="planResultLoading"
-        class="plan-result-content"
-      >
-        <template v-if="planResult">
-          <section class="plan-result-hero">
-            <div class="plan-result-title">
-              <div>
-                <div class="plan-title-line">
-                  <h2>
-                    {{
-                      planResult.title
-                      || '个性化学习计划'
-                    }}
-                  </h2>
-
-                  <el-tag
-                    :type="
-                      getPlanStatusType(
-                        planResult.status
-                      )
-                    "
-                    effect="dark"
-                  >
-                    {{
-                      getPlanStatusText(
-                        planResult.status
-                      )
-                    }}
-                  </el-tag>
-                </div>
-
-                <p>
-                  {{
-                    planResult.description
-                    || '暂无计划说明'
-                  }}
-                </p>
-              </div>
-
-              <div class="plan-id-box">
-                <span>计划编号</span>
-                <strong>
-                  #{{ planResult.planId }}
-                </strong>
-              </div>
-            </div>
-          </section>
-
-          <el-alert
-            v-if="planResult.maintenanceMode"
-            type="warning"
-            show-icon
-            :closable="false"
-            class="plan-maintenance-alert"
-            title="当前计划处于维护模式，请检查计划任务和资源绑定情况。"
-          />
-
-          <el-descriptions
-            :column="3"
-            border
-            class="plan-descriptions"
-          >
-            <el-descriptions-item label="学生">
-              {{
-                getPlanStudentName(
-                  planResult
-                )
-              }}
-            </el-descriptions-item>
-
-            <el-descriptions-item label="用户名">
-              {{
-                planResult.username
-                || planResult.student?.username
-                || '暂无'
-              }}
-            </el-descriptions-item>
-
-            <el-descriptions-item label="生成方式">
-              {{
-                getGenerationTypeText(
-                  planResult.generationType
-                )
-              }}
-            </el-descriptions-item>
-
-            <el-descriptions-item label="目标知识点">
-              {{
-                getPlanTargetCount(
-                  planResult
-                )
-              }}
-              个
-            </el-descriptions-item>
-
-            <el-descriptions-item label="计划任务">
-              {{ planTaskCount }}
-              项
-            </el-descriptions-item>
-
-            <el-descriptions-item label="创建管理员">
-              {{
-                planResult.creatorUsername
-                || planResult.createdByUsername
-                || planResult.createdBy
-                || '系统'
-              }}
-            </el-descriptions-item>
-
-            <el-descriptions-item label="开始日期">
-              {{
-                formatDate(
-                  planResult.startDate
-                )
-              }}
-            </el-descriptions-item>
-
-            <el-descriptions-item label="目标日期">
-              {{
-                formatDate(
-                  planResult.targetDate
-                )
-              }}
-            </el-descriptions-item>
-
-            <el-descriptions-item label="生成时间">
-              {{
-                formatDateTime(
-                  planResult.createdAt
-                )
-              }}
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <section class="plan-task-section">
-            <div class="plan-task-header">
-              <div>
-                <h3>计划任务</h3>
-
-                <p>
-                  系统根据风险等级、知识点前置关系
-                  和资源绑定关系自动安排任务顺序。
-                </p>
-              </div>
-
-              <el-tag
-                type="info"
-                effect="plain"
-              >
-                共 {{ planTaskCount }} 项
-              </el-tag>
-            </div>
-
-            <el-table
-              :data="planResultTasks"
-              stripe
-              border
-              max-height="440"
-              empty-text="当前计划没有生成任务"
-            >
-              <el-table-column
-                label="顺序"
-                width="75"
-                align="center"
-              >
-                <template #default="{ row, $index }">
-                  {{
-                    row.sortOrder
-                    || $index + 1
-                  }}
-                </template>
-              </el-table-column>
-
-              <el-table-column
-                label="任务类型"
-                width="115"
-                align="center"
-              >
-                <template #default="{ row }">
-                  <el-tag
-                    :type="
-                      getTaskTypeTagType(
-                        row.taskType
-                      )
-                    "
-                    effect="plain"
-                  >
-                    {{
-                      getTaskTypeText(
-                        row.taskType
-                      )
-                    }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-
-              <el-table-column
-                label="目标知识点"
-                min-width="190"
-              >
-                <template #default="{ row }">
-                  <div class="plan-knowledge-cell">
-                    <span>
-                      {{
-                        row.knowledgePointCode
-                        || row.code
-                        || '暂无编码'
-                      }}
-                    </span>
-
-                    <strong>
-                      {{
-                        row.knowledgePointName
-                        || row.name
-                        || '暂无名称'
-                      }}
-                    </strong>
-                  </div>
-                </template>
-              </el-table-column>
-
-              <el-table-column
-                label="任务标题"
-                prop="title"
-                min-width="260"
-              />
-
-              <el-table-column
-                label="优先级"
-                width="105"
-                align="center"
-              >
-                <template #default="{ row }">
-                  <el-tag
-                    :type="
-                      getPriorityTagType(
-                        row.priority
-                      )
-                    "
-                  >
-                    {{
-                      getPriorityText(
-                        row.priority
-                      )
-                    }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-
-              <el-table-column
-                label="任务状态"
-                width="105"
-                align="center"
-              >
-                <template #default="{ row }">
-                  <el-tag
-                    :type="
-                      getTaskStatusTagType(
-                        row.status
-                      )
-                    "
-                    effect="dark"
-                  >
-                    {{
-                      getTaskStatusText(
-                        row.status
-                      )
-                    }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-
-              <el-table-column
-                label="截止时间"
-                min-width="170"
-              >
-                <template #default="{ row }">
-                  {{
-                    formatDateTime(
-                      row.dueAt
-                    )
-                  }}
-                </template>
-              </el-table-column>
-            </el-table>
-          </section>
-        </template>
-      </div>
-
-      <template #footer>
-        <el-button
-          @click="planResultVisible = false"
-        >
-          关闭
-        </el-button>
-
-        <el-button
-          type="primary"
-          :loading="planResultLoading"
-          :disabled="!planResult?.planId"
-          @click="refreshPlanResult"
-        >
-          刷新计划详情
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -1094,8 +848,10 @@ import {
 } from '@element-plus/icons-vue'
 
 import {
+  getKnowledgePointsSummary,
   getMasteryStudentOverview,
   getStudentMasteryDetail,
+  recalculateAllStudents,
   recalculateStudentMastery
 } from '@/api/masteryRisk'
 
@@ -1123,18 +879,16 @@ const masteryStatusFilter = ref('ALL')
 const riskFilter = ref('ALL')
 
 const recalculatingStudentId = ref(null)
-const generatingStudentId = ref(null)
+const recalculatingAll = ref(false)
 
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detailData = ref(null)
 
-const planResultVisible = ref(false)
-const planResultLoading = ref(false)
-const planResult = ref(null)
-
 const masteryChartRef = ref(null)
 const riskChartRef = ref(null)
+
+const knowledgePoints = ref([])
 
 let masteryChart = null
 let riskChart = null
@@ -1190,6 +944,97 @@ const detailWeakKnowledgePointNames =
       : []
   })
 
+const detailSuggestions =
+  computed(() => {
+    const list =
+      detailData.value?.data
+
+    if (!Array.isArray(list)) {
+      return []
+    }
+
+    return list
+      .filter(
+        item =>
+          item.riskLevel === 'HIGH'
+          || item.riskLevel === 'MEDIUM'
+      )
+      .sort((a, b) => {
+        if (a.riskLevel !== b.riskLevel) {
+          return a.riskLevel === 'HIGH' ? -1 : 1
+        }
+
+        return (
+          Number(a.masteryScore || 0)
+          - Number(b.masteryScore || 0)
+        )
+      })
+      .map(item => {
+        const reasons = []
+        const actions = []
+
+        if (
+          Number(item.totalLearningCount || 0) > 0
+          && Number(item.completedLearningCount || 0)
+            < Number(item.totalLearningCount || 0)
+        ) {
+          reasons.push('关联学习资源未全部完成')
+        } else if (
+          Number(item.totalLearningCount || 0) === 0
+        ) {
+          reasons.push('未绑定学习资源')
+        }
+
+        if (
+          Number(item.totalAssignmentCount || 0) > 0
+        ) {
+          if (
+            Number(item.gradedAssignmentCount || 0)
+              === 0
+          ) {
+            reasons.push('关联考核尚未批改')
+          } else if (
+            Number(item.assessmentScore || 0) < 60
+          ) {
+            reasons.push('考核成绩偏低')
+          }
+        }
+
+        if (reasons.length === 0) {
+          reasons.push('掌握度低于预警阈值')
+        }
+
+        if (
+          Number(item.totalLearningCount || 0) > 0
+        ) {
+          actions.push(
+            `重新学习「${item.knowledgePointName}」关联学习资源`
+          )
+        } else {
+          actions.push(
+            `优先学习「${item.knowledgePointName}」基础内容`
+          )
+        }
+
+        if (
+          Number(item.totalAssignmentCount || 0) > 0
+        ) {
+          actions.push('完成并提交对应能力考核')
+        }
+
+        return {
+          name:
+            item.knowledgePointName,
+          code: item.code,
+          riskLevel: item.riskLevel,
+          masteryScore:
+            item.masteryScore,
+          reason: reasons.join('、'),
+          action: actions.join('；')
+        }
+      })
+  })
+
 const detailStudentId = computed(() => {
   return detailData.value
     ?.student
@@ -1203,91 +1048,9 @@ const detailStudentId = computed(() => {
     || null
 })
 
-const planResultTasks = computed(() => {
-  return Array.isArray(
-    planResult.value?.tasks
-  )
-    ? planResult.value.tasks
-    : []
-})
-
-const planTaskCount = computed(() => {
-  const explicitCount =
-    Number(
-      planResult.value?.taskCount
-    )
-
-  if (
-    Number.isFinite(explicitCount)
-    && explicitCount > 0
-  ) {
-    return explicitCount
-  }
-
-  return planResultTasks.value.length
-})
-
 const unwrapPayload = response => {
   return response
 }
-
-const normalizePlanResponse = response => {
-  const payload =
-    unwrapPayload(response) || {}
-
-  if (
-    payload.plan
-    && typeof payload.plan === 'object'
-  ) {
-    const tasks =
-      Array.isArray(payload.tasks)
-        ? payload.tasks
-        : (
-          Array.isArray(payload.plan.tasks)
-            ? payload.plan.tasks
-            : []
-        )
-
-    const {
-      plan,
-      ...payloadWithoutPlan
-    } = payload
-
-    return {
-      ...payloadWithoutPlan,
-      ...plan,
-      student:
-        payload.student
-        || plan.student,
-      tasks,
-      targetKnowledgePointCount:
-        payload.targetKnowledgePointCount
-        ?? plan.targetKnowledgePointCount,
-      taskCount:
-        payload.taskCount
-        ?? plan.taskCount
-        ?? tasks.length,
-      maintenanceMode:
-        payload.maintenanceMode
-        ?? plan.maintenanceMode
-        ?? false
-    }
-  }
-
-  const tasks =
-    Array.isArray(payload.tasks)
-      ? payload.tasks
-      : []
-
-  return {
-    ...payload,
-    tasks,
-    taskCount:
-      payload.taskCount
-      ?? tasks.length
-  }
-}
-
 const fetchOverview = async () => {
   loading.value = true
   error.value = ''
@@ -1308,6 +1071,23 @@ const fetchOverview = async () => {
       Array.isArray(payload.data)
         ? payload.data
         : []
+
+    // 拉取知识点维度聚合，供"知识点平均掌握度"图使用
+    try {
+      const knowledgeResponse =
+        await getKnowledgePointsSummary()
+
+      knowledgePoints.value =
+        unwrapPayload(knowledgeResponse)
+        || []
+    } catch (knowledgeError) {
+      console.warn(
+        '加载知识点聚合失败',
+        knowledgeError
+      )
+
+      knowledgePoints.value = []
+    }
 
     await nextTick()
     renderCharts()
@@ -1341,12 +1121,10 @@ const renderMasteryChart = () => {
     )
   }
 
-  const calculatedStudents =
-    students.value.filter(
-      student =>
-        student.masteryStatus
-        === 'CALCULATED'
-    )
+  const items =
+    Array.isArray(knowledgePoints.value)
+      ? knowledgePoints.value
+      : []
 
   masteryChart.setOption({
     tooltip: {
@@ -1357,30 +1135,37 @@ const renderMasteryChart = () => {
       formatter(params) {
         const item = params[0]
 
-        return `${item.name}<br/>
-          平均掌握度：${formatPercent(
-            item.value
-          )}`
+        const raw =
+          items[item.dataIndex] || {}
+
+        const score =
+          raw.avgMasteryScore
+
+        return `${raw.name || ''}<br/>` +
+          `已接触学生：${raw.contactCount ?? 0} 人<br/>` +
+          `平均掌握度：${
+            score == null
+              ? '暂无数据'
+              : formatPercent(score)
+          }`
       }
     },
     grid: {
       top: 25,
       right: 25,
-      bottom: 45,
+      bottom: 55,
       left: 60
     },
     xAxis: {
       type: 'category',
-      data: calculatedStudents.map(
-        student =>
-          getStudentName(student)
+      data: items.map(
+        item => item.name
       ),
       axisLabel: {
         interval: 0,
-        rotate:
-          calculatedStudents.length > 5
-            ? 25
-            : 0
+        rotate: items.length > 6
+          ? 25
+          : 0
       }
     },
     yAxis: {
@@ -1394,27 +1179,34 @@ const renderMasteryChart = () => {
         name: '平均掌握度',
         type: 'bar',
         barMaxWidth: 52,
-        data: calculatedStudents.map(
-          student => ({
-            value: Number(
-              student.averageMasteryScore
-              || 0
-            ),
+        data: items.map(item => {
+          const score =
+            item.avgMasteryScore
+
+          const hasData =
+            score != null
+
+          return {
+            value: hasData
+              ? Number(score)
+              : 0,
             itemStyle: {
-              color: getScoreColor(
-                student.averageMasteryScore
-              ),
+              color: hasData
+                ? getScoreColor(score)
+                : '#e2e8f0',
               borderRadius: [6, 6, 0, 0]
+            },
+            label: {
+              show: true,
+              position: 'top',
+              formatter() {
+                return hasData
+                  ? formatPercent(score)
+                  : '暂无'
+              }
             }
-          })
-        ),
-        label: {
-          show: true,
-          position: 'top',
-          formatter(params) {
-            return formatPercent(params.value)
           }
-        }
+        })
       }
     ]
   })
@@ -1571,18 +1363,51 @@ const handleRecalculate = async student => {
   }
 }
 
-const handleGeneratePlan = async student => {
-  ElMessage.info(
-    '个性化学习计划模块将在后续版本提供，当前版本聚焦掌握度计算与薄弱知识点识别'
-  )
-}
+const handleRecalculateAll = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将对全部启用学生重新计算知识点掌握度，' +
+      '新建知识点或调整绑定后，所有学生的最新掌握度将保持一致。是否继续？',
+      '全部重算确认',
+      {
+        confirmButtonText: '开始全部重算',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch (cancelError) {
+    return
+  }
 
-const refreshPlanResult = async () => {
-  ElMessage.info(
-    '个性化学习计划模块将在后续版本提供'
-  )
-}
+  recalculatingAll.value = true
 
+  try {
+    const response =
+      await recalculateAllStudents()
+
+    const payload =
+      unwrapPayload(response) || {}
+
+    ElMessage.success(
+      `全部重算完成：${payload.studentCount || 0} 名学生，` +
+      `共 ${payload.recordCount || 0} 条掌握度记录`
+    )
+
+    await fetchOverview()
+  } catch (requestError) {
+    console.error(
+      '全部重算失败',
+      requestError
+    )
+
+    ElMessage.error(
+      requestError.message
+      || '全部重算失败'
+    )
+  } finally {
+    recalculatingAll.value = false
+  }
+}
 const getStudentName = student => {
   if (!student) {
     return '未知学生'
@@ -1593,65 +1418,6 @@ const getStudentName = student => {
     || student.username
     || '未知学生'
 }
-
-const getPlanStudentName = plan => {
-  if (!plan) {
-    return '未知学生'
-  }
-
-  return plan.displayName
-    || plan.realName
-    || plan.student?.displayName
-    || plan.student?.realName
-    || plan.username
-    || plan.student?.username
-    || '未知学生'
-}
-
-const getPlanTargetCount = plan => {
-  const explicitCount =
-    Number(
-      plan?.targetKnowledgePointCount
-    )
-
-  if (
-    Number.isFinite(explicitCount)
-    && explicitCount > 0
-  ) {
-    return explicitCount
-  }
-
-  const tasks =
-    Array.isArray(plan?.tasks)
-      ? plan.tasks
-      : []
-
-  const knowledgePointKeys =
-    new Set()
-
-  tasks.forEach(task => {
-    const key =
-      task.knowledgePointId
-      ?? task.knowledgePointCode
-      ?? task.code
-      ?? task.knowledgePointName
-      ?? task.name
-      ?? null
-
-    if (
-      key !== null
-      && key !== undefined
-      && String(key).trim() !== ''
-    ) {
-      knowledgePointKeys.add(
-        String(key)
-      )
-    }
-  })
-
-  return knowledgePointKeys.size
-}
-
 const getAvatarText = student => {
   const name =
     getStudentName(student)
@@ -1698,43 +1464,6 @@ const getRiskTagType = riskLevel => {
   return typeMap[riskLevel]
     || 'info'
 }
-
-const getPlanStatusText = status => {
-  const textMap = {
-    DRAFT: '草稿',
-    ACTIVE: '进行中',
-    COMPLETED: '已完成',
-    CANCELLED: '已取消'
-  }
-
-  return textMap[status]
-    || status
-    || '未知'
-}
-
-const getPlanStatusType = status => {
-  const typeMap = {
-    DRAFT: 'info',
-    ACTIVE: 'primary',
-    COMPLETED: 'success',
-    CANCELLED: 'danger'
-  }
-
-  return typeMap[status]
-    || 'info'
-}
-
-const getGenerationTypeText = type => {
-  const textMap = {
-    AUTO: '系统自动生成',
-    MANUAL: '管理员手动创建'
-  }
-
-  return textMap[type]
-    || type
-    || '未知'
-}
-
 const getTaskTypeText = type => {
   const textMap = {
     LEARNING_ITEM: '学习资源',
@@ -1910,6 +1639,17 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 22px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.header-actions .el-button + .el-button {
+  margin-left: 0;
 }
 
 .page-header h1 {
@@ -2129,6 +1869,60 @@ onBeforeUnmount(() => {
 
 .muted-text {
   color: #94a3b8;
+}
+
+.weak-point-text {
+  color: #d97706;
+  font-weight: 600;
+}
+
+.suggestion-section {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+}
+
+.suggestion-title {
+  margin: 0 0 10px;
+  color: #92400e;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.suggestion-item + .suggestion-item {
+  border-top: 1px dashed #fde68a;
+}
+
+.suggestion-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.suggestion-name {
+  color: #1f2937;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.suggestion-line {
+  margin-top: 4px;
+  color: #57534e;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.suggestion-label {
+  color: #92400e;
+  font-weight: 600;
 }
 
 .detail-content {

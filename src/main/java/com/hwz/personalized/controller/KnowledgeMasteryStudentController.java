@@ -1,21 +1,26 @@
 package com.hwz.personalized.controller;
 
 import com.hwz.admin.service.AdminAccessService;
+import com.hwz.common.entity.StudentKnowledgeMastery;
 import com.hwz.common.entity.User;
 import com.hwz.personalized.service.KnowledgeMasteryQueryService;
+import com.hwz.personalized.service.KnowledgeMasteryService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * 学生端知识点掌握度接口。
  *
- * 学生只能查询当前登录账号自己的掌握度，
+ * 学生只能查询和重算当前登录账号自己的掌握度，
  * 不能通过请求参数指定其他学生 ID。
  */
 @RestController
@@ -24,12 +29,16 @@ public class KnowledgeMasteryStudentController {
 
     private final KnowledgeMasteryQueryService queryService;
 
+    private final KnowledgeMasteryService masteryService;
+
     private final AdminAccessService accessService;
 
     public KnowledgeMasteryStudentController(
             KnowledgeMasteryQueryService queryService,
+            KnowledgeMasteryService masteryService,
             AdminAccessService accessService) {
         this.queryService = queryService;
+        this.masteryService = masteryService;
         this.accessService = accessService;
     }
 
@@ -43,6 +52,67 @@ public class KnowledgeMasteryStudentController {
     public ResponseEntity<Map<String, Object>>
     getMyMastery() {
         User currentUser =
+                requireStudent();
+
+        Map<String, Object> response =
+                queryService.getStudentMastery(
+                        currentUser.getId()
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 重新计算当前登录学生自己的全部知识点掌握度。
+     *
+     * 学生端页面打开时调用，确保刚学完的
+     * 学习记录与最新考核成绩能立即反映到掌握度上。
+     *
+     * 请求示例：
+     * POST /personalized/student/mastery/recalculate
+     */
+    @PostMapping("/recalculate")
+    public ResponseEntity<Map<String, Object>>
+    recalculateMyMastery() {
+        User currentUser =
+                requireStudent();
+
+        List<StudentKnowledgeMastery> results =
+                masteryService.recalculateStudent(
+                        currentUser.getId()
+                );
+
+        Map<String, Object> response =
+                new LinkedHashMap<>();
+
+        response.put(
+                "message",
+                "Knowledge mastery recalculated successfully"
+        );
+
+        response.put(
+                "studentId",
+                currentUser.getId()
+        );
+
+        response.put(
+                "count",
+                results.size()
+        );
+
+        response.put(
+                "data",
+                results
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 校验当前登录账号是普通学生。
+     */
+    private User requireStudent() {
+        User currentUser =
                 accessService.requireUser();
 
         if (currentUser.getRole()
@@ -53,11 +123,6 @@ public class KnowledgeMasteryStudentController {
             );
         }
 
-        Map<String, Object> response =
-                queryService.getStudentMastery(
-                        currentUser.getId()
-                );
-
-        return ResponseEntity.ok(response);
+        return currentUser;
     }
 }

@@ -60,6 +60,26 @@ public class KnowledgeMasteryAdminController {
     }
 
     /**
+     * 查询每个启用知识点的学生掌握度聚合。
+     *
+     * 用于预警页"知识点平均掌握度"图，
+     * 展示哪个知识点学生普遍薄弱。
+     *
+     * 请求示例：
+     * GET /personalized/admin/mastery/knowledge-points-summary
+     */
+    @GetMapping("/knowledge-points-summary")
+    public ResponseEntity<List<Map<String, Object>>>
+    getKnowledgePointSummary() {
+        adminAccessService.requireAdmin();
+
+        List<Map<String, Object>> results =
+                overviewService.getKnowledgePointSummary();
+
+        return ResponseEntity.ok(results);
+    }
+
+    /**
      * 查询指定学生的知识点掌握度。
      *
      * 请求示例：
@@ -75,6 +95,36 @@ public class KnowledgeMasteryAdminController {
                 queryService.getStudentMastery(
                         studentId
                 );
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 重新计算全部启用学生的全部知识点掌握度。
+     *
+     * 新建知识点或调整绑定关系后，一键让
+     * 所有学生的最新掌握度保持一致。
+     *
+     * 请求示例：
+     * POST /personalized/admin/mastery/recalculate-all
+     */
+    @PostMapping("/recalculate-all")
+    public ResponseEntity<Map<String, Object>>
+    recalculateAllStudents() {
+        adminAccessService.requireAdmin();
+
+        Map<String, Object> result =
+                masteryService.recalculateAllStudents();
+
+        Map<String, Object> response =
+                new LinkedHashMap<>();
+
+        response.put(
+                "message",
+                "All students recalculated successfully"
+        );
+
+        response.putAll(result);
 
         return ResponseEntity.ok(response);
     }

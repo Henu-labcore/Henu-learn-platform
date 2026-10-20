@@ -1,18 +1,18 @@
-# 知识点掌握度计算与薄弱知识点识别 模块交付说明
+# 知识点掌握度计算与薄弱知识点识别 模块交付说明（最终版）
 
 - 分支：`lijiaqing`（基线：上一组 `caiyaqi` 分支，提交 26a2d8a）
 - 交付人：李佳晴（第二组）
-- 日期：2026-10-20
+- 日期：2026-10-20（最终交付版，含第一批完善后的全部成果）
 - 模块范围：**知识点掌握度计算 + 薄弱知识点识别**（学习分析与推荐 → 学习能力画像）
-- 明确不做：个性化学习计划模块（与 caiyaqi 的 learning_plan 表撞名不同构，后续组另行处理）
+- 明确不做：个性化学习计划模块（与 caiyaqi 的 learning_plan 表撞名不同构，后续组另行处理）；薄弱点一键跳转学习资源、老师一键布置（二期，文档标注，本版不做）
 
 ---
 
 ## 一、模块解决什么问题
 
 1. 把"学习记录 + 考核成绩"换算成每个知识点的**掌握度分值**（0~100）；
-2. 按**预警阈值**自动识别**薄弱知识点**（高风险），并给出风险等级与统计；
-3. 学生端查看自己的掌握度；管理员端查看全员风险总览、薄弱知识点名单，并可**手动触发重算**。
+2. 按**预警阈值**自动识别**薄弱知识点**，并区分"**没学（未知）**"与"**学得差（高/中风险）**"，给出风险等级与统计；
+3. 学生端查看自己的掌握度与**优先补强建议**；管理员端查看全员风险总览、**薄弱知识点名单**与**知识点维度掌握度图**，支持**单生/全员一键重算**。
 
 ## 二、核心算法（与页面、接口一一对应）
 
@@ -29,7 +29,7 @@
 ### 2. 考核得分（能力考核 → 知识点，按权重加权）
 
 - 仅 `GRADED` 且 `score` 非空的提交计分：`score / 考核总分 × 100`；
-- 未提交 / 已提交未批改（SUBMITTED 等）→ **0 分，但权重照算**（区别于"无考核关联"）。
+- 已提交未批改（SUBMITTED 等）→ **0 分，但权重照算**（区别于"无考核关联"）。
 
 ### 3. 综合掌握度
 
@@ -40,84 +40,140 @@
 | 仅考核关联 | 考核分 |
 | 无任何关联 | 0 |
 
-### 4. 风险分级（薄弱识别）
+### 4. 风险分级（薄弱识别，含"未学习"判定）
+
+**方案 B（本版采用）**：先判定学生是否**接触过**该知识点（有学习记录或考核提交即视为接触），未接触 → `UNKNOWN（未知，灰）`；接触过再按分数分级：
 
 | 条件 | 等级 |
 |---|---|
-| 无任何关联 | UNKNOWN（未知） |
-| 掌握度 < 预警阈值 | HIGH（高风险，薄弱） |
+| 未接触（无学习记录且无考核提交） | UNKNOWN（未知，区别于"学得差"） |
+| 接触过且掌握度 < 预警阈值 | HIGH（高风险，薄弱） |
 | 阈值 ≤ 掌握度 < 阈值 + 15 | MEDIUM（中风险） |
 | 掌握度 ≥ 阈值 + 15 | LOW（低风险） |
 
-> 阈值存在 knowledge_point.warning_threshold，默认 60，智能体知识点可单独调（如 AI-001/AI-005 为 65）。
+> 阈值存在 knowledge_point.warning_threshold，默认 60，部分智能体知识点为 65。
+> 方案 B 的意义：**"没学"和"学了但差"分开预警**，老师一眼看出该催谁、该帮谁。
 
 ## 三、新增内容清单
 
-### 后端（`src/main/java/com/hwz/`，共 18 个文件）
+### 后端（`src/main/java/com/hwz/`）
 
 - `personalized/controller/`：KnowledgeMasteryStudentController、KnowledgeMasteryAdminController、KnowledgePointAdminController
-- `personalized/service/`：KnowledgeMasteryService（核心计算）、KnowledgeMasteryOverviewService（管理员总览）、KnowledgeMasteryQueryService（详情查询）、KnowledgePointAdminService（知识点管理）
+- `personalized/service/`：KnowledgeMasteryService（核心计算 + 批量重算）、KnowledgeMasteryOverviewService（管理员总览 + 知识点聚合）、KnowledgeMasteryQueryService（详情查询）、KnowledgePointAdminService（知识点管理）
 - `personalized/dto/`：KnowledgePointAdminDtos
 - `common/entity/`：KnowledgePoint、StudentKnowledgeMastery、LearningItemKnowledgePoint、AssignmentKnowledgePoint、KnowledgePointPrerequisite
 - `common/mapper/`：对应 5 个 MyBatis-Plus Mapper
 
-### 前端（`web-study-1.0.1/package/src/`，共 5 个新文件 + 2 处修改）
+### 前端（`web-study-1.0.1/package/src/`）
 
 - 新页面：`views/MyKnowledgeMastery.vue`（学生端"我的掌握度"）、`views/MasteryRiskOverview.vue`（管理员"掌握度风险预警"）、`views/KnowledgePointManagement.vue`（管理员"知识点管理"）
 - 新接口：`api/masteryRisk.js`、`api/knowledgePointAdmin.js`
 - 修改：`router/index.js`（学生路由 my-mastery + 2 条管理员路由）、`components/Layout/Index.vue`（侧边栏"我的掌握度" + 顶栏下拉分组："内容管理→知识点管理"、"数据监控→掌握度风险预警/学习计划风险"）
 
-### 数据库（`src/main/resources/db/`，共 2 个 SQL）
+### 数据库（`src/main/resources/db/`）
 
-- `migrations/20261020_personalized_mastery.sql`：新增 5 张表 + 10 个种子知识点（覆盖 6 大学习分类）+ 15 条资源关联 + 3 条考核关联 + 3 条前置关系，幂等可重复执行
-- `demo/seed_mastery_test.sql`：8 条测试用例数据（只动测试学生 4/5，幂等 DELETE+INSERT）
+- `migrations/20261020_personalized_mastery.sql`：新增 5 张表 + 10 个种子知识点（覆盖 6 大学习分类）+ 资源/考核关联 + 前置关系，幂等可重复执行
+- `demo/seed_mastery_test.sql`：测试用例数据（8 条原用例 + **T9 张伟全绿范例**），幂等
+- `demo/unify_demo_password.sql`：**演示账号密码统一为 `admin123`**（46 个 USER，幂等，执行后校验条数）
 
-## 四、主要接口
+## 四、主要接口（含最终版新增）
 
 | 接口 | 角色 | 说明 |
 |---|---|---|
-| GET `/api/personalized/student/mastery/me` | 学生 | 我的知识点掌握度 |
-| GET `/api/personalized/admin/mastery/students` | 管理员 | 全员掌握度风险总览 |
-| GET `/api/personalized/admin/mastery/students/{id}` | 管理员 | 指定学生掌握度详情 |
+| GET `/api/personalized/student/mastery/me` | 学生 | 我的知识点掌握度（含 Top3 补强数据源） |
+| POST `/api/personalized/student/mastery/recalculate` | 学生 | **学生端自动重算**（页面加载先重算再取数） |
+| GET `/api/personalized/admin/mastery/students` | 管理员 | 全员掌握度风险总览（**含薄弱知识点列**） |
+| GET `/api/personalized/admin/mastery/students/{id}` | 管理员 | 指定学生掌握度详情（含原因/完成度字段，供学习建议文案） |
 | POST `/api/personalized/admin/mastery/students/{id}/recalculate` | 管理员 | 手动重算该生全部知识点掌握度 |
+| POST `/api/personalized/admin/mastery/recalculate-all` | 管理员 | **全员一键批量重算**（46 学生 / 506 条记录实测通过） |
+| GET `/api/personalized/admin/mastery/knowledge-points-summary` | 管理员 | **知识点维度聚合**（已接触人数、平均掌握度、风险分布，供知识点平均掌握度图） |
 | GET/POST/PUT `/api/personalized/admin/knowledge-points...` | 管理员 | 知识点管理（分页/统计/详情/增改/启停/绑定资源与考核） |
 
-## 五、8 条测试用例验收结果（已实测通过）
+## 五、最终版功能增强（在首批交付基础上的完善）
+
+1. **区分"未知"与"薄弱"**（方案 B）：未学习显示灰色"未知风险"，不再与"学得差"混在一起；
+2. **学生端自动重算**：打开"我的掌握度"先调用重算接口，刚学完/考核完立即反映；重算失败不阻断页面展示；
+3. **删除"生成计划"按钮**：caiyaqi 半成品计划模块不再保留入口，避免误导；
+4. **老师端主图改为"知识点平均掌握度"**：按知识点聚合（过滤未知），固定 11 根柱，不再随学生数膨胀；无数据知识点显示灰色"暂无"；一眼看出哪个知识点学生普遍薄弱；
+5. **老师端列表新增"薄弱知识点"列**：每行显示该生最差的非未知知识点名，全未知显示"未学习"；
+6. **老师端详情弹窗新增"学习建议"**：对高/中风险知识点给出原因（学习未完成/考核未批改/成绩偏低）与建议（补学习/交考核），前端基于详情数据生成；
+7. **学生端新增"优先补强"Top3 卡片**：按风险与掌握度排序展示最该补的 1-3 个知识点（含当前掌握度与具体行动建议），全绿时不出现；
+8. **建议文案数据化**：高风险/中风险建议改为"原因 + 建议动作（完成剩余 N 个资源/提交考核等）"，不再是空泛固定话术；
+9. **演示数据**：新增张伟（demo2024_003）全绿范例 T9；46 个演示账号密码统一 `admin123`。
+
+## 六、测试用例验收结果（已实测通过）
+
+### 1. 算法用例（T1~T8，接口级逐条比对）
 
 测试学生：S1 = demo2024_001 李明(user_id=4)，S2 = demo2024_002 王芳(user_id=5)
 
-| 用例 | 场景 | 学习分 | 考核分 | 综合 | 期望风险 | 实测结果 | 结论 |
+| 用例 | 场景 | 学习分 | 考核分 | 综合 | 期望风险 | 实测 | 结论 |
 |---|---|---|---|---|---|---|---|
 | T1 | S1×KP-AI-001 双关联满分 | 100 | 100 | 100 | LOW | 100 / LOW | PASS |
 | T2 | S2×KP-AI-001 混合加权（57完成+56开始，考核50） | 70 | 50 | 58 | HIGH | 58 / HIGH | PASS |
-| T3 | S1×KP-AI-002 全零（未学习+未考核） | 0 | 0 | 0 | HIGH | 0 / HIGH | PASS |
+| T3 | S1×KP-AI-002 全零（未学习+未考核→未接触） | — | — | — | UNKNOWN | UNKNOWN | PASS |
 | T4 | S1×KP-AI-003 只学满分 | 100 | — | 100 | LOW | 100 / LOW | PASS |
 | T5 | S2×KP-AI-003 只学开始 | 40 | — | 40 | HIGH | 40 / HIGH | PASS |
 | T6 | S1×KP-AI-004 只考 GRADED 60（=阈值边界） | — | 60 | 60 | MEDIUM | 60 / MEDIUM | PASS |
 | T7 | S2×KP-AI-004 只考未批改（SUBMITTED 无分→0） | — | 0 | 0 | HIGH | 0 / HIGH | PASS |
 | T8 | S1×KP-CR-001 权重 2:1（42完成权2 + 49开始权1） | 80 | — | 80 | LOW | 80 / LOW | PASS |
 
-验证方式：后端启动后调用 recalculate 接口重算 S1/S2，读取详情接口的 masteryScore / riskLevel 逐条比对。
+> T3 在原方案为 HIGH(0)，方案 B 生效后正确显示 UNKNOWN——"没学"不再算"学得差"。
 
-## 六、如何部署运行
+### 2. 张伟全绿范例（T9）
+
+- 学生：demo2024_003 张伟(user_id=6)，15 条学习记录 + 3 条 GRADED 高分考核
+- 实测：10 个知识点全部 LOW（全绿），平均掌握度 ≈ 98%
+- 用途：演示"学得好的学生长什么样"，与反面样例形成对照
+
+### 3. 功能用例
+
+- 学生端自动重算：登录张伟打开"我的掌握度"→ 自动重算 → 数据刷新（实测通过）
+- 批量重算：管理员点击"全部重算"→ 46 学生 / 506 条掌握度记录全部更新（实测通过）
+- 知识点聚合接口：11 个知识点全部返回，无数据知识点 contactCount=0 / avg 为空（实测通过）
+- 总览薄弱列：4 个演示学生均返回薄弱知识点名（实测通过）
+
+## 七、演示账号与密码（全部 `admin123`）
+
+| 账号 | 身份 | 用途 |
+|---|---|---|
+| admin | 管理员 | 演示预警页 / 知识点管理 / 批量重算 |
+| demo_student | 学生（反面参照①） | 平均 4.8，大量未知——演示"没学" |
+| demo2024_001 李明 | 学生（反面参照②） | 平均 40，1 个中风险——演示"学了但差" |
+| demo2024_002 王芳 | 学生（反面参照③） | 平均 12.5，多个高风险——演示"薄弱" |
+| demo2024_003 张伟 | 学生（全绿范例） | 平均 98，全部低风险——演示"学得好" |
+
+> 其余 42 个 USER 账号密码也已统一为 `admin123`（脚本 `unify_demo_password.sql`，登录后首次需按提示改密）。
+
+## 八、演示注意事项
+
+1. **登录限流**：验证码登录限制 5 次/分钟/账号，演示连续切换账号请间隔约 1 分钟；
+2. **知识点平均掌握度图**：AI 系列（1-5）接触学生少、分差大（47~100 层次分明），密码基础系列（CL/PR/BC/WM）为 43 人整体中等（70~75）——正好演示"哪里强、哪里弱"；
+3. **新建知识点后**：需在"掌握度风险预警"页点"全部重算"，学生端才会出现该知识点的掌握度记录（演示时请说明这个机制，属正常设计）；
+4. **KP-AI-006 深度学习**：本地演示环境界面新建的测试知识点，**不入仓库脚本**；如仓库环境不需要可停用/删除；
+5. **列表排序**：按"高风险数降序 + 平均掌握度升序"，页面副标题与后端 ORDER BY 一致；
+6. 学生端"优先补强"卡：仅展示高/中风险知识点（不凑数），全绿学生（如张伟）不显示。
+
+## 九、如何部署运行
 
 1. 导库（幂等，可重复执行）：
    ```bash
    mysql -uroot -p123456 --default-character-set=utf8mb4 labcore < src/main/resources/db/migrations/20261020_personalized_mastery.sql
    mysql -uroot -p123456 --default-character-set=utf8mb4 labcore < src/main/resources/db/demo/seed_mastery_test.sql
+   mysql -uroot -p123456 --default-character-set=utf8mb4 labcore < src/main/resources/db/demo/unify_demo_password.sql
    ```
 2. 后端：`mvn spring-boot:run`（JDK8 + Maven3.8，端口 8080）。
 3. 前端：`cd web-study-1.0.1/package && npm install && npm run dev`（Vite 端口 5175，CORS 已允许）。
 4. 管理员登录后：顶栏头像下拉 → 数据监控 → **掌握度风险预警** / 内容管理 → **知识点管理**；学生登录后：侧边栏 → **我的掌握度**。
-5. 新产生学习/考核数据后，管理员在"掌握度风险预警"页对学生执行"重算"即可刷新掌握度。
+5. 新产生学习/考核数据后：学生端打开页面自动重算；管理员可在预警页对学生执行"重算"或"全部重算"。
 
-## 七、与上一组（caiyaqi）的边界与说明
+## 十、与上一组（caiyaqi）的边界与说明
 
-- 本分支新增 5 张画像表；**未建计划表**（caiyaqi 的 learning_plan 表与画像版学习计划表撞名不同构，为避免破坏其已交付功能，本组不建计划相关表，计划模块由后续组另行设计）。
-- `MasteryRiskOverview.vue` 中原"生成计划"按钮保留入口，但点击提示"个性化学习计划模块将在后续版本提供"。
-- 未修改 `main` 分支，未改动 caiyaqi 已交付的任何既有功能文件（仅在本组新增页面/接口/表范围内改动）。
+- 本分支新增 5 张画像表；**未建计划表**（caiyaqi 的 learning_plan 表与画像版计划表撞名不同构，为避免破坏其已交付功能，本组不建计划相关表，计划模块由后续组另行设计）。
+- **已删除**原"生成计划"按钮与弹窗（caiyaqi 半成品入口），不留误导性入口。
+- 未修改 `main` 分支，未改动 caiyaqi 已交付的既有功能文件（仅在本组新增页面/接口/表范围内改动）。
 
-## 八、触发方式说明
+## 十一、触发方式说明（演进路线）
 
-当前为**管理员手动重算**（简单可靠）。演进路线（后续组可做）：
-手动重算 → 页面懒加载自动重算 → 学习/考核事件驱动增量重算 → 定时任务全量重算。
+当前为**学生端打开页面自动重算 + 管理员手动/批量重算**（简单可靠）。演进路线（后续组可做）：
+页面自动重算 → 学习/考核事件驱动增量重算 → 定时任务全量重算。

@@ -18,7 +18,9 @@ import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 学生知识点掌握度计算服务。
@@ -128,6 +130,58 @@ public class KnowledgeMasteryService {
     }
 
     /**
+     * 重新计算全部启用学生的掌握度。
+     *
+     * 管理员"全部重算"使用：
+     * 新建知识点或调整绑定关系后，
+     * 一键让所有学生的最新掌握度保持一致。
+     */
+    @Transactional
+    public Map<String, Object> recalculateAllStudents() {
+        List<User> students =
+                userMapper.selectList(
+                        new LambdaQueryWrapper<User>()
+                                .eq(
+                                        User::getRole,
+                                        User.Role.USER
+                                )
+                                .eq(
+                                        User::getStatus,
+                                        User.Status.ACTIVE
+                                )
+                );
+
+        int studentCount = 0;
+        int recordCount = 0;
+
+        for (User student : students) {
+            List<StudentKnowledgeMastery> results =
+                    recalculateStudent(
+                            student.getId()
+                    );
+
+            studentCount++;
+
+            recordCount += results.size();
+        }
+
+        Map<String, Object> result =
+                new LinkedHashMap<>();
+
+        result.put(
+                "studentCount",
+                studentCount
+        );
+
+        result.put(
+                "recordCount",
+                recordCount
+        );
+
+        return result;
+    }
+
+    /**
      * 计算一个学生在单个知识点上的掌握度。
      */
     private StudentKnowledgeMastery calculateKnowledgePoint(
@@ -183,12 +237,23 @@ public class KnowledgeMasteryService {
                     new BigDecimal("60.00");
         }
 
+        /*
+         * 判断学生是否接触过该知识点：
+         * 只要关联资源有过学习记录（含开始未完成）
+         * 或关联考核有过提交记录（含未批改），
+         * 就视为"已接触"；两者皆无视为"未学习"。
+         */
+        boolean hasContact =
+                learningEvidence.lastLearningTime != null
+                || assessmentEvidence.lastAssessmentTime != null;
+
         String riskLevel =
                 calculateRiskLevel(
                         masteryScore,
                         warningThreshold,
                         hasLearningRelation,
-                        hasAssessmentRelation
+                        hasAssessmentRelation,
+                        hasContact
                 );
 
         LocalDateTime now =
@@ -529,14 +594,22 @@ public class KnowledgeMasteryService {
 
     /**
      * 根据掌握度和知识点阈值计算风险等级。
+     *
+     * 两种情况判为 UNKNOWN：
+     * 1. 知识点没有绑定任何学习资源与考核（无关联）；
+     * 2. 学生从未接触过该知识点（无学习记录且无考核提交）。
+     *
+     * 其余按掌握度与阈值的关系判 HIGH / MEDIUM / LOW。
      */
     private String calculateRiskLevel(
             BigDecimal masteryScore,
             BigDecimal warningThreshold,
             boolean hasLearningRelation,
-            boolean hasAssessmentRelation) {
-        if (!hasLearningRelation
-                && !hasAssessmentRelation) {
+            boolean hasAssessmentRelation,
+            boolean hasContact) {
+        if ((!hasLearningRelation
+                && !hasAssessmentRelation)
+                || !hasContact) {
             return "UNKNOWN";
         }
 

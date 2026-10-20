@@ -240,6 +240,68 @@
             title="当前没有高风险知识点，请继续保持学习进度。"
           />
 
+          <section
+            v-if="topWeakPoints.length > 0"
+            class="focus-section"
+          >
+            <div class="focus-header">
+              <div>
+                <h4>优先补强</h4>
+
+                <p>
+                  按风险与掌握度排序，建议优先补强以下
+                  {{ topWeakPoints.length }}
+                  个知识点
+                </p>
+              </div>
+            </div>
+
+            <div class="focus-grid">
+              <div
+                v-for="item in topWeakPoints"
+                :key="item.knowledgePointId"
+                class="focus-card"
+                :class="
+                  `risk-${String(
+                    item.riskLevel
+                  ).toLowerCase()}`
+                "
+              >
+                <div class="focus-head">
+                  <el-tag
+                    :type="
+                      getRiskTagType(
+                        item.riskLevel
+                      )
+                    "
+                    effect="light"
+                  >
+                    {{
+                      getRiskText(
+                        item.riskLevel
+                      )
+                    }}
+                  </el-tag>
+
+                  <strong>
+                    {{ item.knowledgePointName }}
+                  </strong>
+                </div>
+
+                <div class="focus-score">
+                  当前掌握度
+                  {{ item.masteryScore }}%
+                </div>
+
+                <p>
+                  {{
+                    getSuggestionText(item)
+                  }}
+                </p>
+              </div>
+            </div>
+          </section>
+
           <section class="content-grid">
             <article class="panel chart-panel">
               <div class="panel-header">
@@ -533,7 +595,8 @@ import {
 } from '@element-plus/icons-vue'
 
 import {
-  getMyKnowledgeMastery
+  getMyKnowledgeMastery,
+  recalculateMyMastery
 } from '@/api/masteryRisk'
 
 const loading = ref(false)
@@ -610,11 +673,33 @@ const sortedMasteryList = computed(() => {
   })
 })
 
+const topWeakPoints = computed(() => {
+  return sortedMasteryList.value
+    .filter(
+      item =>
+        item.riskLevel === 'HIGH'
+        || item.riskLevel === 'MEDIUM'
+    )
+    .slice(0, 3)
+})
+
 const fetchMastery = async () => {
   loading.value = true
   error.value = ''
 
   try {
+    // 先按最新学习记录与考核成绩重算自己的掌握度，
+    // 再拉取详情，保证刚学完的内容能立即反映到页面上。
+    // 重算失败不阻断数据加载，直接展示已有结果。
+    try {
+      await recalculateMyMastery()
+    } catch (recalculateError) {
+      console.warn(
+        '个人掌握度重算失败，继续加载已有数据',
+        recalculateError
+      )
+    }
+
     masteryData.value =
       await getMyKnowledgeMastery()
 
@@ -791,19 +876,47 @@ const renderChart = () => {
 }
 
 const getSuggestionText = item => {
-  if (item.riskLevel === 'HIGH') {
-    return '该知识点低于预警阈值，建议优先复习相关学习卡片并完成对应考核。'
-  }
-
-  if (item.riskLevel === 'MEDIUM') {
-    return '该知识点已达到基础要求，但稳定性不足，建议继续练习和巩固。'
-  }
-
   if (item.riskLevel === 'LOW') {
-    return '该知识点当前掌握较好，可进行阶段性复习并继续学习后续内容。'
+    return '当前掌握较好，可进行阶段性复习并继续学习后续内容。'
   }
 
-  return '当前有效数据不足，请继续完成相关学习和考核任务。'
+  if (item.riskLevel === 'UNKNOWN') {
+    return '当前有效数据不足，请继续完成相关学习和考核任务。'
+  }
+
+  const reasons = item.riskLevel === 'HIGH'
+    ? ['掌握度低于预警阈值']
+    : ['接近预警阈值，稳定性不足']
+
+  const actions = []
+
+  if (
+    Number(item.totalLearningCount || 0) > 0
+    && Number(item.completedLearningCount || 0)
+      < Number(item.totalLearningCount || 0)
+  ) {
+    actions.push(
+      `完成剩余 ${Number(item.totalLearningCount) - Number(item.completedLearningCount)} 个学习资源`
+    )
+  }
+
+  if (
+    Number(item.totalAssignmentCount || 0) > 0
+  ) {
+    if (
+      Number(item.gradedAssignmentCount || 0) === 0
+    ) {
+      actions.push('提交对应能力考核')
+    } else {
+      actions.push('复习并重做对应考核')
+    }
+  }
+
+  if (actions.length === 0) {
+    actions.push('重新学习相关学习卡片')
+  }
+
+  return `${reasons.join('，')}，建议：${actions.join('；')}。`
 }
 
 const getRiskText = riskLevel => {
@@ -1114,6 +1227,75 @@ onBeforeUnmount(() => {
 
 .weak-alert {
   margin-bottom: 20px;
+}
+
+.focus-section {
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid #fde68a;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+}
+
+.focus-header h4 {
+  margin: 0 0 4px;
+  color: #92400e;
+  font-size: 16px;
+}
+
+.focus-header p {
+  margin: 0 0 14px;
+  color: #a16207;
+  font-size: 13px;
+}
+
+.focus-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.focus-card {
+  padding: 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+}
+
+.focus-card.risk-high {
+  border-left-color: #ef4444;
+}
+
+.focus-card.risk-medium {
+  border-left-color: #f59e0b;
+}
+
+.focus-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.focus-head strong {
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.focus-score {
+  margin-bottom: 6px;
+  color: #b45309;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.focus-card p {
+  margin: 0;
+  color: #57534e;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .content-grid {
