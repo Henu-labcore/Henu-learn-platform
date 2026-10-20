@@ -924,11 +924,11 @@ const getRiskText = riskLevel => {
     HIGH: '高风险',
     MEDIUM: '中风险',
     LOW: '低风险',
-    UNKNOWN: '未知'
+    UNKNOWN: '未学'
   }
 
   return textMap[riskLevel]
-    || '未知'
+    || '未学'
 }
 
 const getRiskTagType = riskLevel => {

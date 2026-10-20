@@ -176,7 +176,7 @@
             <div class="panel-header">
               <div>
                 <h2>知识点平均掌握度</h2>
-                <p>已接触学生（非未知）在各知识点上的平均掌握度</p>
+                <p>已接触学生（非未学）在各知识点上的平均掌握度</p>
               </div>
             </div>
 
@@ -1272,7 +1272,7 @@ const renderRiskChart = () => {
             }
           },
           {
-            name: '未知风险',
+            name: '未学',
             value:
               summary.value
                 .totalUnknownRiskCount,
@@ -1444,12 +1444,12 @@ const getRiskText = riskLevel => {
     HIGH: '高风险',
     MEDIUM: '中风险',
     LOW: '低风险',
-    UNKNOWN: '未知',
+    UNKNOWN: '未学',
     NOT_CALCULATED: '未计算'
   }
 
   return textMap[riskLevel]
-    || '未知'
+    || '未学'
 }
 
 const getRiskTagType = riskLevel => {
