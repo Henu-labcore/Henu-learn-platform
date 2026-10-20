@@ -15,12 +15,17 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-              <el-dropdown-item v-if="authStore.isAdmin" command="users">用户管理</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" divided disabled>内容管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="content">学习内容管理</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" command="knowledge-points">知识点管理</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" divided disabled>数据监控</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="dashboard">平台学习总览</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" command="mastery-risks">掌握度风险预警</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" command="plan-risks">学习计划风险</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" divided disabled>系统管理</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" command="users">用户管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="assignments-admin">考核管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="maintenance">项目维护</el-dropdown-item>
-              <el-dropdown-item v-if="authStore.isAdmin" command="plan-risks">学习计划风险</el-dropdown-item>
               <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -97,6 +102,15 @@
           </router-link>
 
           <router-link
+            to="/my-mastery"
+            class="menu-item"
+            :class="{ active: route.path === '/my-mastery' }"
+          >
+            <el-icon><TrendCharts /></el-icon>
+            <span>我的掌握度</span>
+          </router-link>
+
+          <router-link
             to="/assignments"
             class="menu-item"
             :class="{ active: route.path === '/assignments' }"
@@ -147,7 +161,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
-import { ArrowDown, Calendar, DataAnalysis, DocumentChecked, Menu, Reading, Star, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, DataAnalysis, DocumentChecked, Menu, Reading, Star, TrendCharts, UserFilled } from '@element-plus/icons-vue'
 import { useFavoritesStore } from '@/stores/studyStore'
 import LearningPlanNotifications from '@/components/knowledge/LearningPlanNotifications.vue'
 import { getLearningItems } from '@/api/knowledge'
@@ -244,6 +258,14 @@ const handleLogout = async () => {
 const handleUserCommand = command => {
   if (command === 'plan-risks') {
     router.push('/admin-learning-risks').catch(() => {})
+    return
+  }
+  if (command === 'mastery-risks') {
+    router.push('/mastery-risks').catch(() => {})
+    return
+  }
+  if (command === 'knowledge-points') {
+    router.push('/knowledge-points').catch(() => {})
     return
   }
   if (command === 'profile') {

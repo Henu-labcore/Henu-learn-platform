@@ -9,6 +9,16 @@ const adminRoutes = [
     meta: { title: '学习计划风险', requiresAuth: true, requiresAdmin: true }
   },
   {
+    path: 'mastery-risks', name: 'AdminMasteryRisks',
+    component: () => import('@/views/MasteryRiskOverview.vue'),
+    meta: { title: '掌握度风险预警', requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: 'knowledge-points', name: 'KnowledgePointManagement',
+    component: () => import('@/views/KnowledgePointManagement.vue'),
+    meta: { title: '知识点管理', requiresAuth: true, requiresAdmin: true }
+  },
+  {
     path: 'users',
     name: 'UserManagement',
     component: () => import('@/views/UserManagement.vue'),
@@ -104,6 +114,12 @@ const routes = [
         name: 'LearnDashboard',
         component: () => import('@/views/LearnDashboard.vue'),
         meta: { title: '学习数据面板', requiresAuth: true }
+      },
+      {
+        path: 'my-mastery',
+        name: 'MyKnowledgeMastery',
+        component: () => import('@/views/MyKnowledgeMastery.vue'),
+        meta: { title: '我的掌握度', requiresAuth: true }
       },
       {
         path: 'assignments',
