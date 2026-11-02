@@ -189,633 +189,171 @@
           <article class="panel">
             <div class="panel-header">
               <div>
-                <h2>知识点风险分布</h2>
-                <p>全部已计算知识点的风险等级分布</p>
+                <h2>知识点风险分布（按学生数）</h2>
+                <p>
+                  按高风险率降序，最多显示 10 个知识点；
+                  已接触不足 10 人标注“样本不足”并排在后面
+                </p>
               </div>
             </div>
 
             <div
+              v-if="riskRows.length > 0"
               ref="riskChartRef"
               class="chart"
             />
+
+            <div
+              v-else
+              class="chart-empty"
+            >
+              暂无已接触的知识点数据
+            </div>
           </article>
         </section>
 
-        <section class="panel">
-          <div class="panel-header table-header">
+        <section class="panel trend-panel">
+          <div class="panel-header history-header">
             <div>
-              <h2>学生风险列表</h2>
+              <h2>班级掌握度趋势</h2>
 
               <p>
-                优先展示高风险数量更多、
-                平均掌握度更低的学生
+                按天统计已接触记录的整体平均掌握度
               </p>
             </div>
 
-            <div class="filter-bar">
-              <el-input
-                v-model="keyword"
-                clearable
-                placeholder="搜索用户名或姓名"
-                class="keyword-input"
+            <div class="trend-actions">
+              <el-radio-group
+                v-model="trendDays"
+                size="small"
+                :disabled="trendLoading"
+                @change="fetchTrend"
               >
-                <template #prefix>
-                  <el-icon>
-                    <Search />
-                  </el-icon>
-                </template>
-              </el-input>
+                <el-radio-button :label="7">
+                  近 7 天
+                </el-radio-button>
 
-              <el-select
-                v-model="masteryStatusFilter"
-                class="filter-select"
-                placeholder="计算状态"
-              >
-                <el-option
-                  label="全部计算状态"
-                  value="ALL"
-                />
+                <el-radio-button :label="30">
+                  近 30 天
+                </el-radio-button>
 
-                <el-option
-                  label="已计算"
-                  value="CALCULATED"
-                />
-
-                <el-option
-                  label="未计算"
-                  value="NOT_CALCULATED"
-                />
-              </el-select>
-
-              <el-select
-                v-model="riskFilter"
-                class="filter-select"
-                placeholder="最高风险"
-              >
-                <el-option
-                  label="全部风险"
-                  value="ALL"
-                />
-
-                <el-option
-                  label="高风险"
-                  value="HIGH"
-                />
-
-                <el-option
-                  label="中风险"
-                  value="MEDIUM"
-                />
-
-                <el-option
-                  label="低风险"
-                  value="LOW"
-                />
-
-                <el-option
-                  label="未计算"
-                  value="NOT_CALCULATED"
-                />
-              </el-select>
+                <el-radio-button :label="90">
+                  近 90 天
+                </el-radio-button>
+              </el-radio-group>
             </div>
           </div>
 
-          <el-table
-            v-loading="loading"
-            :data="filteredStudents"
-            stripe
-            border
-            style="width: 100%"
-            :header-cell-style="tableHeaderStyle"
-          >
-            <el-table-column
-              label="学生"
-              min-width="190"
-              fixed="left"
-            >
-              <template #default="{ row }">
-                <div class="student-cell">
-                  <div class="student-avatar">
-                    {{ getAvatarText(row) }}
-                  </div>
-
-                  <div>
-                    <div class="student-name">
-                      {{ getStudentName(row) }}
-                    </div>
-
-                    <div class="student-username">
-                      @{{ row.username }}
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="计算状态"
-              width="115"
-              align="center"
-            >
-              <template #default="{ row }">
-                <el-tag
-                  :type="
-                    getMasteryStatusTagType(
-                      row.masteryStatus
-                    )
-                  "
-                  effect="light"
-                >
-                  {{
-                    getMasteryStatusText(
-                      row.masteryStatus
-                    )
-                  }}
-                </el-tag>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="平均掌握度"
-              min-width="165"
-            >
-              <template #default="{ row }">
-                <div
-                  v-if="
-                    row.masteryStatus
-                    === 'CALCULATED'
-                  "
-                  class="score-cell"
-                >
-                  <el-progress
-                    :percentage="
-                      normalizeScore(
-                        row.averageMasteryScore
-                      )
-                    "
-                    :stroke-width="10"
-                    :color="
-                      getScoreColor(
-                        row.averageMasteryScore
-                      )
-                    "
-                  />
-                </div>
-
-                <span
-                  v-else
-                  class="muted-text"
-                >
-                  尚未计算
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="知识点数"
-              prop="knowledgePointCount"
-              width="95"
-              align="center"
-            />
-
-            <el-table-column
-              label="高风险"
-              width="90"
-              align="center"
-            >
-              <template #default="{ row }">
-                <span class="risk-number high-number">
-                  {{ row.highRiskCount }}
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="中风险"
-              width="90"
-              align="center"
-            >
-              <template #default="{ row }">
-                <span class="risk-number medium-number">
-                  {{ row.mediumRiskCount }}
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="低风险"
-              width="90"
-              align="center"
-            >
-              <template #default="{ row }">
-                <span class="risk-number low-number">
-                  {{ row.lowRiskCount }}
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="最高风险"
-              width="110"
-              align="center"
-            >
-              <template #default="{ row }">
-                <el-tag
-                  :type="
-                    getRiskTagType(
-                      row.highestRiskLevel
-                    )
-                  "
-                  effect="dark"
-                >
-                  {{
-                    getRiskText(
-                      row.highestRiskLevel
-                    )
-                  }}
-                </el-tag>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="薄弱知识点"
-              min-width="160"
-            >
-              <template #default="{ row }">
-                <span
-                  v-if="
-                    row.weakKnowledgePoint
-                    && row.masteryStatus
-                      === 'CALCULATED'
-                  "
-                  class="weak-point-text"
-                >
-                  {{ row.weakKnowledgePoint }}
-                </span>
-
-                <span
-                  v-else
-                  class="muted-text"
-                >
-                  {{ row.masteryStatus === 'CALCULATED' ? '未学习' : '尚未计算' }}
-                </span>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="首次改密"
-              width="100"
-              align="center"
-            >
-              <template #default="{ row }">
-                <el-tag
-                  :type="
-                    row.mustChangePassword
-                      ? 'warning'
-                      : 'success'
-                  "
-                  effect="plain"
-                >
-                  {{
-                    row.mustChangePassword
-                      ? '待完成'
-                      : '已完成'
-                  }}
-                </el-tag>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="最近计算时间"
-              min-width="170"
-            >
-              <template #default="{ row }">
-                {{
-                  formatDateTime(
-                    row.lastCalculatedAt
-                  )
-                }}
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="操作"
-              width="285"
-              fixed="right"
-              align="center"
-            >
-              <template #default="{ row }">
-                <el-button
-                  type="primary"
-                  link
-                  :disabled="
-                    row.masteryStatus
-                    !== 'CALCULATED'
-                  "
-                  @click="openDetail(row)"
-                >
-                  查看详情
-                </el-button>
-
-
-                <el-button
-                  type="warning"
-                  link
-                  :loading="
-                    recalculatingStudentId
-                    === row.studentId
-                  "
-                  @click="handleRecalculate(row)"
-                >
-                  重新计算
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <el-empty
-            v-if="
-              !loading
-              && filteredStudents.length === 0
-            "
-            description="没有符合筛选条件的学生"
+          <MasteryTrendChart
+            v-loading="trendLoading"
+            :points="adminTrendPoints"
+            :show-risk-bars="false"
+            :height="330"
           />
         </section>
+
+        <AdminProfileSection />
+
       </div>
     </div>
 
-    <el-dialog
-      v-model="detailVisible"
-      width="88%"
-      top="5vh"
+    <el-drawer
+      v-model="riskDetailVisible"
+      :title="riskDetailTitle"
+      size="640px"
       destroy-on-close
-      title="学生知识点掌握度详情"
     >
-      <div
-        v-loading="detailLoading"
-        class="detail-content"
-      >
-        <template v-if="detailData">
-          <section class="detail-student">
-            <div>
-              <h3>
-                {{
-                  getStudentName(
-                    detailData.student
-                  )
-                }}
-              </h3>
-
-              <p>
-                用户名：
-                {{ detailData.student.username }}
-              </p>
-            </div>
-
-            <div class="detail-summary">
-              <el-statistic
-                title="平均掌握度"
-                :value="
-                  detailData.summary
-                    .averageMasteryScore
-                "
-                :precision="2"
-                suffix="%"
-              />
-
-              <el-statistic
-                title="高风险"
-                :value="
-                  detailData.summary.highRiskCount
-                "
-              />
-
-              <el-statistic
-                title="中风险"
-                :value="
-                  detailData.summary.mediumRiskCount
-                "
-              />
-
-              <el-statistic
-                title="低风险"
-                :value="
-                  detailData.summary.lowRiskCount
-                "
-              />
-            </div>
-          </section>
-
-          <el-alert
-            v-if="
-              detailWeakKnowledgePointNames.length > 0
-            "
-            type="warning"
-            :closable="false"
-            show-icon
-            class="weak-alert"
-          >
-            <template #title>
-              薄弱知识点：
-              {{
-                detailWeakKnowledgePointNames
-                  .join('、')
-              }}
-            </template>
-          </el-alert>
-
-          <section
-            v-if="detailSuggestions.length > 0"
-            class="suggestion-section"
-          >
-            <h4 class="suggestion-title">
-              学习建议
-            </h4>
-
-            <div
-              v-for="suggestion in detailSuggestions"
-              :key="suggestion.code"
-              class="suggestion-item"
-            >
-              <el-tag
-                :type="
-                  suggestion.riskLevel === 'HIGH'
-                    ? 'danger'
-                    : 'warning'
-                "
-                size="small"
-              >
-                {{
-                  suggestion.riskLevel === 'HIGH'
-                    ? '高风险'
-                    : '中风险'
-                }}
-              </el-tag>
-
-              <div class="suggestion-body">
-                <div class="suggestion-name">
-                  {{ suggestion.name }}
-                  （掌握度
-                  {{
-                    formatPercent(
-                      suggestion.masteryScore
-                    )
-                  }}）
-                </div>
-
-                <div class="suggestion-line">
-                  <span class="suggestion-label">
-                    原因：
-                  </span>
-
-                  {{ suggestion.reason }}
-                </div>
-
-                <div class="suggestion-line">
-                  <span class="suggestion-label">
-                    建议：
-                  </span>
-
-                  {{ suggestion.action }}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <el-table
-            :data="detailData.data"
-            stripe
-            border
-            max-height="470"
-          >
-            <el-table-column
-              prop="code"
-              label="知识点编码"
-              width="120"
-            />
-
-            <el-table-column
-              prop="knowledgePointName"
-              label="知识点名称"
-              min-width="180"
-            />
-
-            <el-table-column
-              label="学习得分"
-              width="115"
-              align="center"
-            >
-              <template #default="{ row }">
-                {{
-                  formatPoints(
-                    row.learningScore
-                  )
-                }}
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="考核得分"
-              width="115"
-              align="center"
-            >
-              <template #default="{ row }">
-                {{
-                  formatPoints(
-                    row.assessmentScore
-                  )
-                }}
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="综合掌握度"
-              width="125"
-              align="center"
-            >
-              <template #default="{ row }">
-                <strong>
-                  {{
-                    formatPercent(
-                      row.masteryScore
-                    )
-                  }}
-                </strong>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="预警阈值"
-              width="115"
-              align="center"
-            >
-              <template #default="{ row }">
-                {{
-                  formatPercent(
-                    row.warningThreshold
-                  )
-                }}
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="风险等级"
-              width="100"
-              align="center"
-            >
-              <template #default="{ row }">
-                <el-tag
-                  :type="
-                    getRiskTagType(
-                      row.riskLevel
-                    )
-                  "
-                >
-                  {{
-                    getRiskText(
-                      row.riskLevel
-                    )
-                  }}
-                </el-tag>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="学习完成"
-              width="105"
-              align="center"
-            >
-              <template #default="{ row }">
-                {{ row.completedLearningCount }}
-                /
-                {{ row.totalLearningCount }}
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              label="已批改考核"
-              width="115"
-              align="center"
-            >
-              <template #default="{ row }">
-                {{ row.gradedAssignmentCount }}
-                /
-                {{ row.totalAssignmentCount }}
-              </template>
-            </el-table-column>
-          </el-table>
-        </template>
-      </div>
-
-      <template #footer>
-        <el-button
-          @click="detailVisible = false"
+      <div v-loading="riskDetailLoading">
+        <p
+          v-if="riskDetailData"
+          class="risk-detail-summary"
         >
-          关闭
-        </el-button>
+          共 {{ riskDetailData.count }} 名学生
+        </p>
 
-      </template>
-    </el-dialog>
+        <el-table
+          v-if="
+            riskDetailData
+            && riskDetailData.students.length > 0
+          "
+          :data="riskDetailData.students"
+          stripe
+          border
+          style="width: 100%"
+        >
+          <el-table-column
+            label="学生"
+            min-width="140"
+          >
+            <template #default="{ row }">
+              <div class="risk-student">
+                <strong>
+                  {{ row.displayName || row.username }}
+                </strong>
+                <small>{{ row.username }}</small>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            label="掌握度"
+            width="90"
+            align="center"
+          >
+            <template #default="{ row }">
+              {{ formatScore(row.masteryScore) }}
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            label="学习分"
+            width="90"
+            align="center"
+          >
+            <template #default="{ row }">
+              {{ formatScore(row.learningScore) }}
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            label="考核分"
+            width="90"
+            align="center"
+          >
+            <template #default="{ row }">
+              {{ formatScore(row.assessmentScore) }}
+            </template>
+          </el-table-column>
+
+          <el-table-column
+            label="风险"
+            width="90"
+            align="center"
+          >
+            <template #default="{ row }">
+              <el-tag
+                :type="riskTagType(row.riskLevel)"
+                effect="light"
+              >
+                {{ riskLabel(row.riskLevel) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <el-empty
+          v-else-if="!riskDetailLoading"
+          description="暂无该风险等级的学生"
+        />
+
+        <p
+          v-if="riskDetailError"
+          class="risk-detail-error"
+        >
+          {{ riskDetailError }}
+        </p>
+      </div>
+    </el-drawer>
 
   </div>
 </template>
@@ -840,7 +378,6 @@ import {
   DataAnalysis,
   Loading,
   Refresh,
-  Search,
   TrendCharts,
   User,
   Warning,
@@ -849,11 +386,15 @@ import {
 
 import {
   getKnowledgePointsSummary,
+  getKnowledgePointStudents,
   getMasteryStudentOverview,
-  getStudentMasteryDetail,
-  recalculateAllStudents,
-  recalculateStudentMastery
+  getMasteryTrend,
+  recalculateAllStudents
 } from '@/api/masteryRisk'
+
+import MasteryTrendChart from '@/components/mastery/MasteryTrendChart.vue'
+
+import AdminProfileSection from '@/components/profile/AdminProfileSection.vue'
 
 const loading = ref(false)
 const error = ref('')
@@ -874,183 +415,115 @@ const summary = ref({
   highRiskStudentNames: []
 })
 
-const keyword = ref('')
-const masteryStatusFilter = ref('ALL')
-const riskFilter = ref('ALL')
-
-const recalculatingStudentId = ref(null)
 const recalculatingAll = ref(false)
 
-const detailVisible = ref(false)
-const detailLoading = ref(false)
-const detailData = ref(null)
+const riskDetailVisible = ref(false)
+const riskDetailLoading = ref(false)
+const riskDetailData = ref(null)
+const riskDetailError = ref('')
+const riskDetailTitle = ref('学生名单')
 
 const masteryChartRef = ref(null)
 const riskChartRef = ref(null)
 
 const knowledgePoints = ref([])
 
+const trendData = ref(null)
+
+const trendLoading = ref(false)
+
+const trendDays = ref(30)
+
 let masteryChart = null
 let riskChart = null
 
-const tableHeaderStyle = {
-  background: '#f8fafc',
-  color: '#334155',
-  fontWeight: '600'
-}
 
-const filteredStudents = computed(() => {
-  const normalizedKeyword =
-    keyword.value.trim().toLowerCase()
 
-  return students.value.filter(student => {
-    const matchesKeyword =
-      !normalizedKeyword
-      || String(student.username || '')
-        .toLowerCase()
-        .includes(normalizedKeyword)
-      || String(student.displayName || '')
-        .toLowerCase()
-        .includes(normalizedKeyword)
-      || String(student.realName || '')
-        .toLowerCase()
-        .includes(normalizedKeyword)
-
-    const matchesMasteryStatus =
-      masteryStatusFilter.value === 'ALL'
-      || student.masteryStatus
-        === masteryStatusFilter.value
-
-    const matchesRisk =
-      riskFilter.value === 'ALL'
-      || student.highestRiskLevel
-        === riskFilter.value
-
-    return matchesKeyword
-      && matchesMasteryStatus
-      && matchesRisk
-  })
+const adminTrendPoints = computed(() => {
+  return trendData.value?.trend || []
 })
 
-const detailWeakKnowledgePointNames =
-  computed(() => {
-    const names =
-      detailData.value
-        ?.summary
-        ?.weakKnowledgePointNames
+// 按知识点统计各风险等级的学生数，供风险堆叠条形图使用
+const riskRows = computed(() => {
+  const activeStudentCount = Number(
+    summary.value.activeStudentCount || 0
+  )
 
-    return Array.isArray(names)
-      ? names
-      : []
-  })
+  // 学生较少时不启用最小样本门槛，避免图表被清空
+  const enforceSample = activeStudentCount >= 10
 
-const detailSuggestions =
-  computed(() => {
-    const list =
-      detailData.value?.data
+  return (knowledgePoints.value || [])
+    .map(item => {
+      const high = Number(item.highCount || 0)
+      const medium = Number(item.mediumCount || 0)
+      const low = Number(item.lowCount || 0)
+      const unknown = Number(item.unknownCount || 0)
+      const contact = Number(item.contactCount || 0)
 
-    if (!Array.isArray(list)) {
-      return []
-    }
+      return {
+        id: item.knowledgePointId,
+        name: item.name,
+        high,
+        medium,
+        low,
+        unknown,
+        contact,
+        rate: contact > 0
+          ? high / contact * 100
+          : 0,
+        eligible: !enforceSample || contact >= 10
+      }
+    })
+    .filter(item => {
+      return item.high + item.medium + item.low > 0
+    })
+    .sort((left, right) => {
+      // 样本不足的排在后面
+      if (left.eligible !== right.eligible) {
+        return left.eligible ? -1 : 1
+      }
 
-    return list
-      .filter(
-        item =>
-          item.riskLevel === 'HIGH'
-          || item.riskLevel === 'MEDIUM'
+      return (
+        right.rate - left.rate
+        || right.high - left.high
+        || right.medium - left.medium
+        || right.low - left.low
+        || left.name.localeCompare(right.name, 'zh')
       )
-      .sort((a, b) => {
-        if (a.riskLevel !== b.riskLevel) {
-          return a.riskLevel === 'HIGH' ? -1 : 1
-        }
-
-        return (
-          Number(a.masteryScore || 0)
-          - Number(b.masteryScore || 0)
-        )
-      })
-      .map(item => {
-        const reasons = []
-        const actions = []
-
-        if (
-          Number(item.totalLearningCount || 0) > 0
-          && Number(item.completedLearningCount || 0)
-            < Number(item.totalLearningCount || 0)
-        ) {
-          reasons.push('关联学习资源未全部完成')
-        } else if (
-          Number(item.totalLearningCount || 0) === 0
-        ) {
-          reasons.push('未绑定学习资源')
-        }
-
-        if (
-          Number(item.totalAssignmentCount || 0) > 0
-        ) {
-          if (
-            Number(item.gradedAssignmentCount || 0)
-              === 0
-          ) {
-            reasons.push('关联考核尚未批改')
-          } else if (
-            Number(item.assessmentScore || 0) < 60
-          ) {
-            reasons.push('考核成绩偏低')
-          }
-        }
-
-        if (reasons.length === 0) {
-          reasons.push('掌握度低于预警阈值')
-        }
-
-        if (
-          Number(item.totalLearningCount || 0) > 0
-        ) {
-          actions.push(
-            `重新学习「${item.knowledgePointName}」关联学习资源`
-          )
-        } else {
-          actions.push(
-            `优先学习「${item.knowledgePointName}」基础内容`
-          )
-        }
-
-        if (
-          Number(item.totalAssignmentCount || 0) > 0
-        ) {
-          actions.push('完成并提交对应能力考核')
-        }
-
-        return {
-          name:
-            item.knowledgePointName,
-          code: item.code,
-          riskLevel: item.riskLevel,
-          masteryScore:
-            item.masteryScore,
-          reason: reasons.join('、'),
-          action: actions.join('；')
-        }
-      })
-  })
-
-const detailStudentId = computed(() => {
-  return detailData.value
-    ?.student
-    ?.studentId
-    || detailData.value
-      ?.student
-      ?.userId
-    || detailData.value
-      ?.student
-      ?.id
-    || null
+    })
+    .slice(0, 10)
 })
+
+
+
 
 const unwrapPayload = response => {
   return response
 }
+
+const fetchTrend = async () => {
+  trendLoading.value = true
+
+  try {
+    const response =
+      await getMasteryTrend(
+        trendDays.value
+      )
+
+    trendData.value =
+      unwrapPayload(response) || null
+  } catch (trendError) {
+    console.warn(
+      '加载掌握度趋势失败',
+      trendError
+    )
+
+    trendData.value = null
+  } finally {
+    trendLoading.value = false
+  }
+}
+
 const fetchOverview = async () => {
   loading.value = true
   error.value = ''
@@ -1091,6 +564,9 @@ const fetchOverview = async () => {
 
     await nextTick()
     renderCharts()
+
+    // 趋势独立加载，失败不影响主列表
+    fetchTrend()
   } catch (requestError) {
     console.error(
       '加载掌握度风险总览失败',
@@ -1217,149 +693,275 @@ const renderRiskChart = () => {
     return
   }
 
+  const rows = riskRows.value
+
+  if (rows.length === 0) {
+    riskChart?.dispose()
+    riskChart = null
+    return
+  }
+
   if (!riskChart) {
     riskChart = echarts.init(
       riskChartRef.value
     )
   }
 
+  riskChart.off('click')
+
+  riskChart.on('click', params => {
+    const row = rows[params.dataIndex]
+
+    if (!row) {
+      return
+    }
+
+    const riskMap = {
+      '高风险': 'HIGH',
+      '中风险': 'MEDIUM',
+      '低风险': 'LOW'
+    }
+
+    openRiskStudents(
+      row,
+      riskMap[params.seriesName] || 'HIGH'
+    )
+  })
+
   riskChart.setOption({
     tooltip: {
-      trigger: 'item',
-      formatter:
-        '{b}：{c} 项（{d}%）'
+      trigger: 'axis',
+
+      axisPointer: {
+        type: 'shadow'
+      },
+
+      formatter(params) {
+        const row = rows[params[0]?.dataIndex]
+
+        if (!row) {
+          return ''
+        }
+
+        return [
+          `<strong>${row.name}</strong>`,
+          `高风险：${row.high} 人（${row.rate.toFixed(0)}%）`,
+          `中风险：${row.medium} 人`,
+          `低风险：${row.low} 人`,
+          `已接触：${row.contact} 人 · 未学：${row.unknown} 人`,
+          row.eligible
+            ? '<span style="color:#94a3b8">点击柱子查看学生名单</span>'
+            : '<span style="color:#b45309">样本不足，不参与优先排序</span>'
+        ].join('<br/>')
+      }
     },
+
     legend: {
-      bottom: 5,
-      left: 'center'
+      top: 0,
+      itemWidth: 12,
+      itemHeight: 10
     },
+
+    grid: {
+      top: 38,
+      left: 220,
+      right: 28,
+      bottom: 24
+    },
+
+    xAxis: {
+      type: 'value',
+      minInterval: 1,
+      name: '学生数',
+
+      nameTextStyle: {
+        fontSize: 11,
+        color: '#64748b'
+      },
+
+      axisLabel: {
+        fontSize: 11
+      },
+
+      splitLine: {
+        lineStyle: {
+          color: '#e2e8f0'
+        }
+      }
+    },
+
+    yAxis: {
+      type: 'category',
+      inverse: true,
+      data: rows.map(row => row.name),
+
+      axisLabel: {
+        rich: {
+          name: {
+            color: '#0f172a',
+            fontSize: 12,
+            fontWeight: 600,
+            lineHeight: 18
+          },
+
+          meta: {
+            color: '#94a3b8',
+            fontSize: 10,
+            lineHeight: 14
+          },
+
+          warn: {
+            color: '#b45309',
+            fontSize: 10,
+            lineHeight: 14
+          }
+        },
+
+        formatter(name, index) {
+          const row = rows[index]
+
+          if (!row) {
+            return name
+          }
+
+          const meta = row.eligible
+            ? `接触 ${row.contact} · 未学 ${row.unknown} · 高 ${row.rate.toFixed(0)}%`
+            : `样本不足 · 接触 ${row.contact}`
+
+          return (
+            `{name|${name}}\n`
+            + `{${row.eligible ? 'meta' : 'warn'}|${meta}}`
+          )
+        }
+      },
+
+      axisTick: {
+        show: false
+      }
+    },
+
     series: [
       {
-        name: '风险分布',
-        type: 'pie',
-        radius: ['42%', '68%'],
-        center: ['50%', '45%'],
-        avoidLabelOverlap: true,
-        label: {
-          formatter: '{b}\n{c} 项'
-        },
-        data: [
-          {
-            name: '高风险',
-            value:
-              summary.value
-                .totalHighRiskCount,
-            itemStyle: {
-              color: '#ef4444'
-            }
-          },
-          {
-            name: '中风险',
-            value:
-              summary.value
-                .totalMediumRiskCount,
-            itemStyle: {
-              color: '#f59e0b'
-            }
-          },
-          {
-            name: '低风险',
-            value:
-              summary.value
-                .totalLowRiskCount,
-            itemStyle: {
-              color: '#22c55e'
-            }
-          },
-          {
-            name: '未学',
-            value:
-              summary.value
-                .totalUnknownRiskCount,
-            itemStyle: {
-              color: '#94a3b8'
-            }
+        name: '高风险',
+        type: 'bar',
+        stack: 'risk',
+        barMaxWidth: 18,
+
+        data: rows.map(row => ({
+          value: row.high,
+
+          itemStyle: {
+            opacity: row.eligible ? 1 : 0.45
           }
-        ]
+        })),
+
+        itemStyle: {
+          color: '#ef4444'
+        }
+      },
+      {
+        name: '中风险',
+        type: 'bar',
+        stack: 'risk',
+        barMaxWidth: 18,
+
+        data: rows.map(row => ({
+          value: row.medium,
+
+          itemStyle: {
+            opacity: row.eligible ? 1 : 0.45
+          }
+        })),
+
+        itemStyle: {
+          color: '#f59e0b'
+        }
+      },
+      {
+        name: '低风险',
+        type: 'bar',
+        stack: 'risk',
+        barMaxWidth: 18,
+
+        data: rows.map(row => ({
+          value: row.low,
+
+          itemStyle: {
+            opacity: row.eligible ? 1 : 0.45
+          }
+        })),
+
+        itemStyle: {
+          color: '#22c55e'
+        }
       }
     ]
-  })
+  }, true)
+
+  riskChart.resize()
 }
 
-const openDetail = async student => {
-  detailVisible.value = true
-  detailLoading.value = true
-  detailData.value = null
-
-  try {
-    const response =
-      await getStudentMasteryDetail(
-        student.studentId
-      )
-
-    detailData.value =
-      unwrapPayload(response)
-  } catch (requestError) {
-    console.error(
-      '加载学生掌握度详情失败',
-      requestError
-    )
-
-    ElMessage.error(
-      requestError.message
-      || '加载学生掌握度详情失败'
-    )
-
-    detailVisible.value = false
-  } finally {
-    detailLoading.value = false
+const riskLabel = risk => {
+  const labels = {
+    HIGH: '高风险',
+    MEDIUM: '中风险',
+    LOW: '低风险',
+    UNKNOWN: '未学'
   }
+
+  return labels[risk] || risk || '未知'
 }
 
-const handleRecalculate = async student => {
-  try {
-    await ElMessageBox.confirm(
-      `确定重新计算“${getStudentName(student)}”的知识点掌握度吗？`,
-      '重新计算确认',
-      {
-        confirmButtonText: '确定计算',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-  } catch (cancelError) {
-    return
+const riskTagType = risk => {
+  if (risk === 'HIGH') {
+    return 'danger'
   }
 
-  recalculatingStudentId.value =
-    student.studentId
+  if (risk === 'MEDIUM') {
+    return 'warning'
+  }
+
+  if (risk === 'LOW') {
+    return 'success'
+  }
+
+  return 'info'
+}
+
+const formatScore = value => {
+  if (value === null || value === undefined) {
+    return '—'
+  }
+
+  return Number(value).toFixed(1)
+}
+
+const openRiskStudents = async (row, risk) => {
+  riskDetailTitle.value =
+    `${row.name} · ${riskLabel(risk)}学生`
+
+  riskDetailVisible.value = true
+  riskDetailLoading.value = true
+  riskDetailData.value = null
+  riskDetailError.value = ''
 
   try {
-    const response =
-      await recalculateStudentMastery(
-        student.studentId
+    riskDetailData.value =
+      await getKnowledgePointStudents(
+        row.id,
+        risk
       )
-
-    const payload =
-      unwrapPayload(response) || {}
-
-    ElMessage.success(
-      `重新计算成功，共生成 ${payload.count || 0} 条掌握度记录`
+  } catch (detailError) {
+    console.warn(
+      '加载知识点学生名单失败',
+      detailError
     )
 
-    await fetchOverview()
-  } catch (requestError) {
-    console.error(
-      '重新计算掌握度失败',
-      requestError
-    )
-
-    ElMessage.error(
-      requestError.message
-      || '重新计算掌握度失败'
-    )
+    riskDetailError.value =
+      detailError.message
+      || '加载学生名单失败'
   } finally {
-    recalculatingStudentId.value = null
+    riskDetailLoading.value = false
   }
 }
 
@@ -1408,142 +1010,17 @@ const handleRecalculateAll = async () => {
     recalculatingAll.value = false
   }
 }
-const getStudentName = student => {
-  if (!student) {
-    return '未知学生'
-  }
 
-  return student.displayName
-    || student.realName
-    || student.username
-    || '未知学生'
-}
-const getAvatarText = student => {
-  const name =
-    getStudentName(student)
 
-  return name
-    .charAt(0)
-    .toUpperCase()
-}
 
-const getMasteryStatusText = status => {
-  return status === 'CALCULATED'
-    ? '已计算'
-    : '未计算'
-}
 
-const getMasteryStatusTagType = status => {
-  return status === 'CALCULATED'
-    ? 'success'
-    : 'info'
-}
 
-const getRiskText = riskLevel => {
-  const textMap = {
-    HIGH: '高风险',
-    MEDIUM: '中风险',
-    LOW: '低风险',
-    UNKNOWN: '未学',
-    NOT_CALCULATED: '未计算'
-  }
 
-  return textMap[riskLevel]
-    || '未学'
-}
 
-const getRiskTagType = riskLevel => {
-  const typeMap = {
-    HIGH: 'danger',
-    MEDIUM: 'warning',
-    LOW: 'success',
-    UNKNOWN: 'info',
-    NOT_CALCULATED: 'info'
-  }
 
-  return typeMap[riskLevel]
-    || 'info'
-}
-const getTaskTypeText = type => {
-  const textMap = {
-    LEARNING_ITEM: '学习资源',
-    ASSIGNMENT: '能力考核',
-    CUSTOM: '自定义任务'
-  }
 
-  return textMap[type]
-    || type
-    || '未知任务'
-}
 
-const getTaskTypeTagType = type => {
-  const typeMap = {
-    LEARNING_ITEM: 'primary',
-    ASSIGNMENT: 'warning',
-    CUSTOM: 'info'
-  }
 
-  return typeMap[type]
-    || 'info'
-}
-
-const getPriorityText = priority => {
-  const textMap = {
-    HIGH: '高优先级',
-    MEDIUM: '中优先级',
-    LOW: '低优先级'
-  }
-
-  return textMap[priority]
-    || priority
-    || '未设置'
-}
-
-const getPriorityTagType = priority => {
-  const typeMap = {
-    HIGH: 'danger',
-    MEDIUM: 'warning',
-    LOW: 'success'
-  }
-
-  return typeMap[priority]
-    || 'info'
-}
-
-const getTaskStatusText = status => {
-  const textMap = {
-    PENDING: '待完成',
-    IN_PROGRESS: '进行中',
-    COMPLETED: '已完成',
-    SKIPPED: '已跳过'
-  }
-
-  return textMap[status]
-    || status
-    || '未知'
-}
-
-const getTaskStatusTagType = status => {
-  const typeMap = {
-    PENDING: 'info',
-    IN_PROGRESS: 'warning',
-    COMPLETED: 'success',
-    SKIPPED: 'info'
-  }
-
-  return typeMap[status]
-    || 'info'
-}
-
-const normalizeScore = score => {
-  const value =
-    Number(score || 0)
-
-  return Math.min(
-    100,
-    Math.max(0, value)
-  )
-}
 
 const getScoreColor = score => {
   const value =
@@ -1565,32 +1042,12 @@ const formatNumber = value => {
     .toFixed(2)
 }
 
-const formatPoints = score => {
-  return `${formatNumber(score)} 分`
-}
 
 const formatPercent = value => {
   return `${formatNumber(value)}%`
 }
 
-const formatDate = value => {
-  if (!value) {
-    return '暂无'
-  }
 
-  return String(value)
-    .slice(0, 10)
-}
-
-const formatDateTime = value => {
-  if (!value) {
-    return '暂无'
-  }
-
-  return String(value)
-    .replace('T', ' ')
-    .slice(0, 19)
-}
 
 const handleResize = () => {
   masteryChart?.resize()
@@ -1794,173 +1251,48 @@ onBeforeUnmount(() => {
 
 .chart {
   width: 100%;
-  height: 350px;
+  height: 420px;
 }
 
-.table-header {
-  align-items: center;
+.chart-grid .panel-header {
+  min-height: 64px;
 }
 
-.filter-bar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.keyword-input {
-  width: 230px;
-}
-
-.filter-select {
-  width: 145px;
-}
-
-.student-cell {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
-.student-avatar {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
+.chart-empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  background: #dbeafe;
-  color: #1d4ed8;
-  font-weight: 700;
-}
-
-.student-name {
-  color: #0f172a;
-  font-weight: 600;
-}
-
-.student-username {
-  margin-top: 3px;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.score-cell {
-  width: 100%;
-}
-
-.risk-number {
-  font-weight: 700;
-}
-
-.high-number {
-  color: #dc2626;
-}
-
-.medium-number {
-  color: #d97706;
-}
-
-.low-number {
-  color: #16a34a;
-}
-
-.muted-text {
-  color: #94a3b8;
-}
-
-.weak-point-text {
-  color: #d97706;
-  font-weight: 600;
-}
-
-.suggestion-section {
-  margin-bottom: 18px;
-  padding: 14px 16px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  min-height: 320px;
+  border: 1px dashed #cbd5e1;
   border-radius: 10px;
-}
-
-.suggestion-title {
-  margin: 0 0 10px;
-  color: #92400e;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.suggestion-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 0;
-}
-
-.suggestion-item + .suggestion-item {
-  border-top: 1px dashed #fde68a;
-}
-
-.suggestion-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.suggestion-name {
-  color: #1f2937;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.suggestion-line {
-  margin-top: 4px;
-  color: #57534e;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.suggestion-label {
-  color: #92400e;
-  font-weight: 600;
-}
-
-.detail-content {
-  min-height: 240px;
-}
-
-.detail-student {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 25px;
-  margin-bottom: 18px;
-  padding: 18px;
-  border-radius: 12px;
   background: #f8fafc;
+  color: #94a3b8;
+  font-size: 13px;
 }
 
-.detail-student h3 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 20px;
-}
-
-.detail-student p {
-  margin: 7px 0 0;
+.risk-detail-summary {
+  margin: 0 0 12px;
   color: #64748b;
+  font-size: 13px;
 }
 
-.detail-summary {
-  display: grid;
-  grid-template-columns:
-    repeat(4, minmax(100px, 1fr));
-  gap: 25px;
+.risk-student {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.weak-alert {
-  margin-bottom: 18px;
+.risk-student small {
+  color: #94a3b8;
+  font-size: 11px;
 }
+
+.risk-detail-error {
+  margin: 12px 0 0;
+  color: #dc2626;
+  font-size: 13px;
+}
+
 
 .plan-result-content {
   min-height: 280px;
@@ -2089,14 +1421,6 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .table-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .filter-bar {
-    justify-content: flex-start;
-  }
 }
 
 @media (max-width: 720px) {
@@ -2112,27 +1436,6 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .filter-bar {
-    width: 100%;
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .keyword-input,
-  .filter-select {
-    width: 100%;
-  }
-
-  .detail-student {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .detail-summary {
-    width: 100%;
-    grid-template-columns:
-      repeat(2, minmax(0, 1fr));
-  }
 
   .plan-result-title,
   .plan-task-header {
@@ -2143,5 +1446,24 @@ onBeforeUnmount(() => {
     width: 100%;
     box-sizing: border-box;
   }
+}
+
+.trend-panel {
+  margin-bottom: 20px;
+}
+
+.history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.trend-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 </style>

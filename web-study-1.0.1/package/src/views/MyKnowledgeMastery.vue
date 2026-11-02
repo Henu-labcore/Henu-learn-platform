@@ -1,30 +1,6 @@
 <template>
   <div class="mastery-page">
     <div class="page-container">
-      <header class="page-header">
-        <div>
-          <h1>我的知识点掌握度</h1>
-
-          <p>
-            综合学习进度和考核成绩，
-            查看自己的知识点掌握情况与薄弱环节。
-          </p>
-        </div>
-
-        <el-button
-          type="primary"
-          plain
-          :loading="loading"
-          @click="fetchMastery"
-        >
-          <el-icon>
-            <Refresh />
-          </el-icon>
-
-          刷新数据
-        </el-button>
-      </header>
-
       <div
         v-if="loading && !masteryData"
         class="status-panel"
@@ -112,6 +88,103 @@
         </div>
 
         <template v-else>
+          <section class="profile-overview">
+            <article class="panel profile-radar-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>能力画像</h2>
+
+                  <p>
+                    五个维度均为 0~100 分
+                  </p>
+                </div>
+
+                <div class="radar-header-actions">
+                  <el-button
+                    text
+                    :loading="loading"
+                    @click="fetchMastery"
+                  >
+                    刷新数据
+                  </el-button>
+
+                  <el-tag
+                    v-if="profileData"
+                    type="info"
+                    effect="plain"
+                  >
+                    置信度：{{ profileData.confidence.label }}
+                  </el-tag>
+                </div>
+              </div>
+
+              <ProfileRadar
+                v-loading="profileLoading"
+                :dimensions="profileDimensions"
+                :height="420"
+              />
+            </article>
+
+            <article class="panel profile-summary-panel">
+              <div class="panel-header profile-summary-header">
+                <div>
+                  <h2>画像结论</h2>
+
+                  <p>基于最近 30 天的学习与考核数据</p>
+                </div>
+
+                <span
+                  v-if="profileData"
+                  class="profile-updated"
+                >
+                  更新于 {{ formatProfileTime(profileData.updatedAt) }}
+                </span>
+              </div>
+
+              <template v-if="profileData">
+                <div
+                  class="persona-block"
+                  :class="`persona-${String(profileData.persona.code).toLowerCase()}`"
+                >
+                  <span class="persona-label">
+                    {{ profileData.persona.label }}
+                  </span>
+
+                  <p>{{ profileData.persona.description }}</p>
+                </div>
+
+                <ProfileTagList :tags="profileTags" />
+
+                <ProfileSuggestion
+                  :recommendation="profileRecommendation"
+                />
+              </template>
+
+              <div v-else class="profile-empty">
+                画像生成中，完成一次学习后刷新即可看到
+              </div>
+            </article>
+          </section>
+
+          <section class="panel profile-trend-panel">
+            <div class="panel-header">
+              <div>
+                <h2>画像趋势</h2>
+
+                <p>
+                  近 30 天五维分数变化；没有记录的日期不连线
+                </p>
+              </div>
+            </div>
+
+            <ProfileTrendChart
+              v-loading="profileHistoryLoading"
+              :dates="profileHistoryDates"
+              :series="profileHistorySeries"
+              :height="300"
+            />
+          </section>
+
           <section class="summary-grid">
             <article class="summary-card">
               <div class="summary-icon score-icon">
@@ -216,95 +289,9 @@
             </article>
           </section>
 
-          <el-alert
-            v-if="weakKnowledgePointNames.length > 0"
-            type="warning"
-            show-icon
-            :closable="false"
-            class="weak-alert"
-          >
-            <template #title>
-              当前薄弱知识点：
-              {{
-                weakKnowledgePointNames.join('、')
-              }}
-            </template>
-          </el-alert>
-
-          <el-alert
-            v-else
-            type="success"
-            show-icon
-            :closable="false"
-            class="weak-alert"
-            title="当前没有高风险知识点，请继续保持学习进度。"
-          />
-
-          <section
-            v-if="topWeakPoints.length > 0"
-            class="focus-section"
-          >
-            <div class="focus-header">
-              <div>
-                <h4>优先补强</h4>
-
-                <p>
-                  按风险与掌握度排序，建议优先补强以下
-                  {{ topWeakPoints.length }}
-                  个知识点
-                </p>
-              </div>
-            </div>
-
-            <div class="focus-grid">
-              <div
-                v-for="item in topWeakPoints"
-                :key="item.knowledgePointId"
-                class="focus-card"
-                :class="
-                  `risk-${String(
-                    item.riskLevel
-                  ).toLowerCase()}`
-                "
-              >
-                <div class="focus-head">
-                  <el-tag
-                    :type="
-                      getRiskTagType(
-                        item.riskLevel
-                      )
-                    "
-                    effect="light"
-                  >
-                    {{
-                      getRiskText(
-                        item.riskLevel
-                      )
-                    }}
-                  </el-tag>
-
-                  <strong>
-                    {{ item.knowledgePointName }}
-                  </strong>
-                </div>
-
-                <div class="focus-score">
-                  当前掌握度
-                  {{ item.masteryScore }}%
-                </div>
-
-                <p>
-                  {{
-                    getSuggestionText(item)
-                  }}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section class="content-grid">
+          <section class="chart-section">
             <article class="panel chart-panel">
-              <div class="panel-header">
+              <div class="panel-header chart-header">
                 <div>
                   <h2>知识点掌握度分布</h2>
 
@@ -312,6 +299,15 @@
                     对比各知识点的综合掌握度和预警阈值
                   </p>
                 </div>
+
+                <el-button
+                  class="detail-entry"
+                  text
+                  title="查看掌握度明细"
+                  @click="detailVisible = true"
+                >
+                  详情
+                </el-button>
               </div>
 
               <div
@@ -319,76 +315,53 @@
                 class="mastery-chart"
               />
             </article>
-
-            <article class="panel suggestion-panel">
-              <div class="panel-header">
-                <div>
-                  <h2>学习建议</h2>
-
-                  <p>
-                    根据当前风险等级生成学习优先级
-                  </p>
-                </div>
-              </div>
-
-              <div class="suggestion-list">
-                <div
-                  v-for="item in sortedMasteryList"
-                  :key="item.knowledgePointId"
-                  class="suggestion-item"
-                  :class="
-                    `risk-${String(
-                      item.riskLevel
-                    ).toLowerCase()}`
-                  "
-                >
-                  <div class="suggestion-main">
-                    <div>
-                      <span class="suggestion-code">
-                        {{ item.code }}
-                      </span>
-
-                      <strong>
-                        {{ item.knowledgePointName }}
-                      </strong>
-                    </div>
-
-                    <el-tag
-                      :type="
-                        getRiskTagType(
-                          item.riskLevel
-                        )
-                      "
-                      effect="light"
-                    >
-                      {{
-                        getRiskText(
-                          item.riskLevel
-                        )
-                      }}
-                    </el-tag>
-                  </div>
-
-                  <p>
-                    {{
-                      getSuggestionText(item)
-                    }}
-                  </p>
-                </div>
-              </div>
-            </article>
           </section>
 
-          <section class="panel detail-panel">
-            <div class="panel-header">
+          <section class="panel history-panel">
+            <div class="panel-header history-header">
               <div>
-                <h2>掌握度明细</h2>
+                <h2>掌握度趋势</h2>
 
                 <p>
-                  查看学习表现、考核表现和综合风险等级
+                  按天统计已接触知识点的平均掌握度，
+                  并叠加高风险数量；30 天视图每次显示 14 天，
+                  可拖动底部滑块查看更早数据
                 </p>
               </div>
+
+              <el-radio-group
+                v-model="historyDays"
+                size="small"
+                :disabled="historyLoading"
+                @change="fetchHistory"
+              >
+                <el-radio-button :label="7">
+                  近 7 天
+                </el-radio-button>
+
+                <el-radio-button :label="30">
+                  近 30 天
+                </el-radio-button>
+              </el-radio-group>
             </div>
+
+            <MasteryTrendChart
+              v-loading="historyLoading"
+              :points="historyTrend"
+              :window-size="historyDays === 30 ? 14 : 0"
+              :height="330"
+            />
+          </section>
+
+          <el-drawer
+            v-model="detailVisible"
+            title="掌握度明细"
+            size="86%"
+            destroy-on-close
+          >
+            <p class="detail-hint">
+              查看学习表现、考核表现和综合风险等级
+            </p>
 
             <el-table
               v-loading="loading"
@@ -566,7 +539,7 @@
                 </template>
               </el-table-column>
             </el-table>
-          </section>
+          </el-drawer>
         </template>
       </template>
     </div>
@@ -588,7 +561,6 @@ import {
   CircleCheck,
   DataAnalysis,
   Loading,
-  Refresh,
   TrendCharts,
   Warning,
   WarningFilled
@@ -596,16 +568,45 @@ import {
 
 import {
   getMyKnowledgeMastery,
+  getMyMasteryHistory,
   recalculateMyMastery
 } from '@/api/masteryRisk'
+
+import MasteryTrendChart from '@/components/mastery/MasteryTrendChart.vue'
+
+import ProfileRadar from '@/components/profile/ProfileRadar.vue'
+
+import ProfileSuggestion from '@/components/profile/ProfileSuggestion.vue'
+
+import ProfileTagList from '@/components/profile/ProfileTagList.vue'
+
+import ProfileTrendChart from '@/components/profile/ProfileTrendChart.vue'
+
+import { getMyProfile, getMyProfileHistory } from '@/api/studentProfile'
 
 const loading = ref(false)
 const error = ref('')
 const masteryData = ref(null)
 
+const profileData = ref(null)
+
+const profileLoading = ref(false)
+
+const profileHistory = ref(null)
+
+const profileHistoryLoading = ref(false)
+
+const historyDays = ref(30)
+
+const historyData = ref(null)
+
+const historyLoading = ref(false)
+
 const chartRef = ref(null)
 
 let masteryChart = null
+
+const detailVisible = ref(false)
 
 const tableHeaderStyle = {
   background: '#f8fafc',
@@ -631,6 +632,60 @@ const avatarText = computed(() => {
     .charAt(0)
     .toUpperCase()
 })
+
+const profileDimensions = computed(() => {
+  return profileData.value?.dimensions || []
+})
+
+const profileTags = computed(() => {
+  return profileData.value?.tags || []
+})
+
+const profileRecommendation = computed(() => {
+  return profileData.value?.recommendation || {
+    weakPoints: [],
+    continueItem: null,
+    nextAction: null
+  }
+})
+
+const profileHistoryDates = computed(() => {
+  return profileHistory.value?.dates || []
+})
+
+const profileHistorySeries = computed(() => {
+  return profileHistory.value?.series || []
+})
+
+const formatProfileTime = value => {
+  return String(value || '')
+    .replace('T', ' ')
+    .slice(0, 16)
+}
+
+const fetchProfile = async () => {
+  profileLoading.value = true
+
+  try {
+    profileData.value = await getMyProfile(30)
+  } catch (profileError) {
+    console.warn('加载学生画像失败', profileError)
+  } finally {
+    profileLoading.value = false
+  }
+}
+
+const fetchProfileHistory = async () => {
+  profileHistoryLoading.value = true
+
+  try {
+    profileHistory.value = await getMyProfileHistory(30)
+  } catch (historyError) {
+    console.warn('加载画像历史失败', historyError)
+  } finally {
+    profileHistoryLoading.value = false
+  }
+}
 
 const weakKnowledgePointNames = computed(() => {
   const names =
@@ -683,6 +738,28 @@ const topWeakPoints = computed(() => {
     .slice(0, 3)
 })
 
+const historyTrend = computed(() => {
+  return historyData.value?.trend || []
+})
+
+const fetchHistory = async () => {
+  historyLoading.value = true
+
+  try {
+    historyData.value =
+      await getMyMasteryHistory(
+        historyDays.value
+      )
+  } catch (historyError) {
+    console.warn(
+      '加载掌握度历史失败',
+      historyError
+    )
+  } finally {
+    historyLoading.value = false
+  }
+}
+
 const fetchMastery = async () => {
   loading.value = true
   error.value = ''
@@ -705,6 +782,12 @@ const fetchMastery = async () => {
 
     await nextTick()
     renderChart()
+
+    await fetchHistory()
+
+    await fetchProfile()
+
+    await fetchProfileHistory()
   } catch (requestError) {
     console.error(
       '加载个人知识点掌握度失败',
@@ -718,6 +801,7 @@ const fetchMastery = async () => {
     loading.value = false
   }
 }
+
 
 const renderChart = () => {
   if (
@@ -1033,34 +1117,16 @@ onBeforeUnmount(() => {
 <style scoped>
 .mastery-page {
   min-height: 100%;
-  padding: 24px;
-  background: #f1f5f9;
 }
 
 .page-container {
   width: 100%;
-  max-width: 1500px;
-  margin: 0 auto;
 }
 
-.page-header {
+.radar-header-actions {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 22px;
-}
-
-.page-header h1 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 28px;
-}
-
-.page-header p {
-  margin: 9px 0 0;
-  color: #64748b;
-  line-height: 1.7;
+  align-items: center;
+  gap: 10px;
 }
 
 .status-panel {
@@ -1307,6 +1373,18 @@ onBeforeUnmount(() => {
   margin-bottom: 20px;
 }
 
+.history-panel {
+  margin-bottom: 20px;
+}
+
+.history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .panel {
   padding: 22px;
   border: 1px solid #e2e8f0;
@@ -1331,11 +1409,6 @@ onBeforeUnmount(() => {
   margin: 7px 0 0;
   color: #64748b;
   font-size: 13px;
-}
-
-.mastery-chart {
-  width: 100%;
-  height: 380px;
 }
 
 .suggestion-list {
@@ -1401,8 +1474,32 @@ onBeforeUnmount(() => {
   line-height: 1.7;
 }
 
-.detail-panel {
-  margin-bottom: 12px;
+.chart-header {
+  align-items: center;
+}
+
+.detail-entry {
+  flex: none;
+  padding: 4px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.detail-entry:hover {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.detail-hint {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .score-cell {
@@ -1446,6 +1543,96 @@ onBeforeUnmount(() => {
   }
 
   .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.profile-overview {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.05fr)
+    minmax(340px, 0.95fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.profile-summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profile-updated {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.persona-block {
+  padding: 14px 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+  margin-bottom: 14px;
+}
+
+.persona-label {
+  display: inline-block;
+  color: #1d4ed8;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.persona-block p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.persona-attention,
+.persona-imbalanced,
+.persona-needs_support,
+.persona-execution,
+.persona-insufficient,
+.persona-silent {
+  border-color: #fde68a;
+  background: linear-gradient(135deg, #fffbeb 0%, #fffdf5 100%);
+}
+
+.persona-attention .persona-label,
+.persona-imbalanced .persona-label,
+.persona-needs_support .persona-label,
+.persona-execution .persona-label,
+.persona-insufficient .persona-label,
+.persona-silent .persona-label {
+  color: #b45309;
+}
+
+.profile-empty {
+  padding: 30px 16px;
+  color: #94a3b8;
+  text-align: center;
+  font-size: 13px;
+}
+
+.chart-section {
+  margin-bottom: 20px;
+}
+
+.mastery-chart {
+  width: 100%;
+  height: 380px;
+}
+
+.profile-trend-panel {
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1100px) {
+  .profile-overview {
     grid-template-columns: 1fr;
   }
 }

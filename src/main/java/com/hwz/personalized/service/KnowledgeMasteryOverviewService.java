@@ -1,7 +1,9 @@
 package com.hwz.personalized.service;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -235,6 +237,99 @@ public class KnowledgeMasteryOverviewService {
                     return row;
                 }
         );
+    }
+
+    /**
+     * 查询指定知识点下某风险等级的学生名单。
+     *
+     * risk 为空或 ALL 时返回该知识点全部学生。
+     */
+    public Map<String, Object> getKnowledgePointStudents(
+            Long knowledgePointId,
+            String risk) {
+
+        List<Map<String, Object>> knowledgePoints =
+                jdbcTemplate.queryForList(
+                        "SELECT knowledge_point_id, code, name"
+                                + " FROM knowledge_point"
+                                + " WHERE knowledge_point_id = ?",
+                        knowledgePointId
+                );
+
+        if (knowledgePoints.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "知识点不存在"
+            );
+        }
+
+        String normalizedRisk = risk == null
+                ? "HIGH"
+                : risk.trim().toUpperCase();
+
+        if (normalizedRisk.isEmpty()) {
+            normalizedRisk = "HIGH";
+        }
+
+        if (!"ALL".equals(normalizedRisk)
+                && !"HIGH".equals(normalizedRisk)
+                && !"MEDIUM".equals(normalizedRisk)
+                && !"LOW".equals(normalizedRisk)
+                && !"UNKNOWN".equals(normalizedRisk)) {
+            normalizedRisk = "HIGH";
+        }
+
+        List<Map<String, Object>> students =
+                jdbcTemplate.queryForList(
+                        "SELECT u.user_id, u.username,"
+                                + " u.display_name, u.real_name,"
+                                + " skm.mastery_score,"
+                                + " skm.learning_score,"
+                                + " skm.assessment_score,"
+                                + " skm.risk_level"
+                                + " FROM student_knowledge_mastery skm"
+                                + " INNER JOIN sys_user u"
+                                + "   ON u.user_id = skm.student_id"
+                                + " WHERE skm.knowledge_point_id = ?"
+                                + "   AND u.role = 'USER'"
+                                + "   AND u.status = 'ACTIVE'"
+                                + "   AND (? = 'ALL' OR skm.risk_level = ?)"
+                                + " ORDER BY skm.mastery_score ASC, u.user_id ASC",
+                        knowledgePointId,
+                        normalizedRisk,
+                        normalizedRisk
+                );
+
+        List<Map<String, Object>> views =
+                new ArrayList<>();
+
+        for (Map<String, Object> row : students) {
+            Map<String, Object> view =
+                    new LinkedHashMap<>();
+
+            view.put("studentId", row.get("user_id"));
+            view.put("username", row.get("username"));
+            view.put("displayName", row.get("display_name"));
+            view.put("realName", row.get("real_name"));
+            view.put("masteryScore", row.get("mastery_score"));
+            view.put("learningScore", row.get("learning_score"));
+            view.put("assessmentScore", row.get("assessment_score"));
+            view.put("riskLevel", row.get("risk_level"));
+
+            views.add(view);
+        }
+
+        Map<String, Object> response =
+                new LinkedHashMap<>();
+        response.put(
+                "knowledgePoint",
+                knowledgePoints.get(0)
+        );
+        response.put("risk", normalizedRisk);
+        response.put("count", views.size());
+        response.put("students", views);
+
+        return response;
     }
 
     /**

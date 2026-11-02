@@ -5,11 +5,13 @@ import com.hwz.common.entity.StudentKnowledgeMastery;
 import com.hwz.common.entity.User;
 import com.hwz.personalized.service.KnowledgeMasteryQueryService;
 import com.hwz.personalized.service.KnowledgeMasteryService;
+import com.hwz.personalized.service.MasteryHistoryService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,14 +33,18 @@ public class KnowledgeMasteryStudentController {
 
     private final KnowledgeMasteryService masteryService;
 
+    private final MasteryHistoryService masteryHistoryService;
+
     private final AdminAccessService accessService;
 
     public KnowledgeMasteryStudentController(
             KnowledgeMasteryQueryService queryService,
             KnowledgeMasteryService masteryService,
+            MasteryHistoryService masteryHistoryService,
             AdminAccessService accessService) {
         this.queryService = queryService;
         this.masteryService = masteryService;
+        this.masteryHistoryService = masteryHistoryService;
         this.accessService = accessService;
     }
 
@@ -57,6 +63,29 @@ public class KnowledgeMasteryStudentController {
         Map<String, Object> response =
                 queryService.getStudentMastery(
                         currentUser.getId()
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 查询当前登录学生的掌握度历史（热力图 + 趋势）。
+     *
+     * 请求示例：
+     * GET /personalized/student/mastery/history?days=30
+     */
+    @GetMapping("/history")
+    public ResponseEntity<Map<String, Object>>
+    getMyMasteryHistory(
+            @RequestParam(required = false) Integer days) {
+
+        User currentUser =
+                requireStudent();
+
+        Map<String, Object> response =
+                masteryHistoryService.getStudentHistory(
+                        currentUser.getId(),
+                        days
                 );
 
         return ResponseEntity.ok(response);

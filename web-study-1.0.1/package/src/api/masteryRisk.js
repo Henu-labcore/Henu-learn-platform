@@ -94,3 +94,65 @@ export function recalculateMyMastery() {
         '/personalized/student/mastery/recalculate'
     )
 }
+
+/**
+ * 查询当前学生的掌握度历史（热力图 + 趋势）。
+ *
+ * 返回按天聚合的掌握度快照：
+ * 1. dates：日期轴；
+ * 2. knowledgePoints：知识点轴；
+ * 3. cells：知识点 × 日期 的掌握度格子；
+ * 4. trend：每天的平均掌握度与风险数量。
+ *
+ * @param {number} days 最近天数（默认 30，范围 1~180）
+ */
+export function getMyMasteryHistory(days = 30) {
+    return request.get(
+        '/personalized/student/mastery/history',
+        { params: { days } }
+    )
+}
+
+/**
+ * 查询学生 × 知识点 当前掌握度矩阵。
+ *
+ * 管理员专用，用于"学生 × 知识点"热力图。
+ *
+ * @param {object} params { keyword, page, pageSize }
+ *   keyword 支持姓名/学号/用户名模糊搜索；
+ *   pageSize 每页人数，后端上限 8。
+ */
+export function getMasteryMatrix(params = {}) {
+    return request.get(
+        '/personalized/admin/mastery/matrix',
+        { params }
+    )
+}
+
+/**
+ * 查询班级掌握度历史趋势。
+ *
+ * 管理员专用：返回每天的整体平均掌握度与风险数量，
+ * 用于班级掌握度趋势折线图（不含逐学生对比）。
+ *
+ * @param {number} days 最近天数（默认 30，范围 1~180）
+ */
+export function getMasteryTrend(days = 30) {
+    return request.get(
+        '/personalized/admin/mastery/trend',
+        { params: { days } }
+    )
+}
+
+/**
+ * 查询某个知识点下指定风险等级的学生名单。
+ *
+ * @param {number} knowledgePointId 知识点 ID
+ * @param {string} risk HIGH / MEDIUM / LOW / UNKNOWN / ALL
+ */
+export function getKnowledgePointStudents(knowledgePointId, risk = 'HIGH') {
+    return request.get(
+        `/personalized/admin/mastery/knowledge-points/${knowledgePointId}/students`,
+        { params: { risk } }
+    )
+}

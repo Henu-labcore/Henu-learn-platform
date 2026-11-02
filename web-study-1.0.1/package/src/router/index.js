@@ -2,17 +2,37 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const adminRoutes = [
-  // 新增风险看板沿用原管理员路由注册和权限保护。
+  // 学情分析：学习过程 / 学生画像 / 计划执行 三个 Tab
   {
-    path: 'admin-learning-risks', name: 'AdminLearningRisks',
-    component: () => import('@/views/AdminLearningRisks.vue'),
-    meta: { title: '学习计划风险', requiresAuth: true, requiresAdmin: true }
+    path: 'analytics',
+    name: 'StudentAnalytics',
+    component: () => import('@/views/analytics/StudentAnalytics.vue'),
+    meta: { title: '学情分析', requiresAuth: true, requiresAdmin: true },
+    children: [
+      { path: '', redirect: '/analytics/process' },
+      {
+        path: 'process',
+        name: 'AnalyticsProcess',
+        component: () => import('@/views/AdminLearningDashboard.vue'),
+        meta: { title: '学习过程', requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'profile',
+        name: 'AnalyticsProfile',
+        component: () => import('@/views/MasteryRiskOverview.vue'),
+        meta: { title: '学生画像', requiresAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'plan',
+        name: 'AnalyticsPlan',
+        component: () => import('@/views/AdminLearningRisks.vue'),
+        meta: { title: '计划执行', requiresAuth: true, requiresAdmin: true }
+      }
+    ]
   },
-  {
-    path: 'mastery-risks', name: 'AdminMasteryRisks',
-    component: () => import('@/views/MasteryRiskOverview.vue'),
-    meta: { title: '掌握度风险预警', requiresAuth: true, requiresAdmin: true }
-  },
+  // 旧入口兼容：原三个管理页已收进学情分析
+  { path: 'admin-learning-risks', redirect: '/analytics/plan' },
+  { path: 'mastery-risks', redirect: '/analytics/profile' },
   {
     path: 'knowledge-points', name: 'KnowledgePointManagement',
     component: () => import('@/views/KnowledgePointManagement.vue'),
@@ -24,12 +44,7 @@ const adminRoutes = [
     component: () => import('@/views/UserManagement.vue'),
     meta: { title: '用户管理', requiresAuth: true, requiresAdmin: true }
   },
-  {
-    path: 'admin-dashboard',
-    name: 'AdminLearningDashboard',
-    component: () => import('@/views/AdminLearningDashboard.vue'),
-    meta: { title: '平台学习总览', requiresAuth: true, requiresAdmin: true }
-  },
+  { path: 'admin-dashboard', redirect: '/analytics/process' },
   {
     path: 'content-library',
     name: 'ContentLibrary',
@@ -62,12 +77,19 @@ const adminRoutes = [
   }
 ]
 
-const adminRouteNames = adminRoutes.map(route => route.name)
+const adminRouteNames = adminRoutes
+  .map(route => route.name)
+  .filter(Boolean)
 // 由 adminRoutes 派生，避免新增后台路由时漏改前缀判断
 const adminPathPrefixes = adminRoutes.map(route => `/${route.path.split('/')[0]}`)
 let adminRoutesAdded = false
 
 const routes = [
+  {
+    // 旧入口兼容：原“我的掌握度”已升级为“我的学习 → 能力画像”
+    path: '/my-mastery',
+    redirect: '/my-learning/profile'
+  },
   {
     path: '/login',
     name: 'Login',
@@ -110,16 +132,34 @@ const routes = [
         meta: { title: '学习卡片', requiresAuth: true }
       },
       {
-        path: 'learn-dashboard',
-        name: 'LearnDashboard',
-        component: () => import('@/views/LearnDashboard.vue'),
-        meta: { title: '学习数据面板', requiresAuth: true }
+        path: 'my-learning',
+        name: 'MyLearning',
+        component: () => import('@/views/MyLearning.vue'),
+        redirect: '/my-learning/process',
+        meta: { title: '我的学习', requiresAuth: true },
+        children: [
+          { path: '', redirect: '/my-learning/process' },
+          {
+            path: 'process',
+            name: 'MyLearningProcess',
+            component: () => import('@/views/LearnDashboard.vue'),
+            meta: { title: '学习数据', requiresAuth: true }
+          },
+          {
+            path: 'profile',
+            name: 'MyLearningProfile',
+            component: () => import('@/views/MyKnowledgeMastery.vue'),
+            meta: { title: '能力画像', requiresAuth: true }
+          }
+        ]
       },
       {
-        path: 'my-mastery',
-        name: 'MyKnowledgeMastery',
-        component: () => import('@/views/MyKnowledgeMastery.vue'),
-        meta: { title: '我的掌握度', requiresAuth: true }
+        path: 'learn-dashboard',
+        redirect: '/my-learning/process'
+      },
+      {
+        path: 'my-profile',
+        redirect: '/my-learning/profile'
       },
       {
         path: 'assignments',
@@ -201,6 +241,11 @@ router.beforeEach((to, from, next) => {
     if (authStore.isAuthenticated && authStore.token) {
       if (to.meta.requiresAdmin && !authStore.isAdmin) {
         next('/')
+        return
+      }
+      // 管理员没有学生个人画像，统一回到学习过程
+      if (to.name === 'MyLearningProfile' && authStore.isAdmin) {
+        next('/my-learning/process')
         return
       }
       next()

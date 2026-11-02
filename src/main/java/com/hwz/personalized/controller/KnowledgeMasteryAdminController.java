@@ -5,11 +5,13 @@ import com.hwz.common.entity.StudentKnowledgeMastery;
 import com.hwz.personalized.service.KnowledgeMasteryOverviewService;
 import com.hwz.personalized.service.KnowledgeMasteryQueryService;
 import com.hwz.personalized.service.KnowledgeMasteryService;
+import com.hwz.personalized.service.MasteryHistoryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
@@ -29,16 +31,20 @@ public class KnowledgeMasteryAdminController {
 
     private final KnowledgeMasteryOverviewService overviewService;
 
+    private final MasteryHistoryService masteryHistoryService;
+
     private final AdminAccessService adminAccessService;
 
     public KnowledgeMasteryAdminController(
             KnowledgeMasteryService masteryService,
             KnowledgeMasteryQueryService queryService,
             KnowledgeMasteryOverviewService overviewService,
+            MasteryHistoryService masteryHistoryService,
             AdminAccessService adminAccessService) {
         this.masteryService = masteryService;
         this.queryService = queryService;
         this.overviewService = overviewService;
+        this.masteryHistoryService = masteryHistoryService;
         this.adminAccessService = adminAccessService;
     }
 
@@ -80,6 +86,28 @@ public class KnowledgeMasteryAdminController {
     }
 
     /**
+     * 查询某知识点下指定风险等级的学生名单。
+     *
+     * 请求示例：
+     * GET /personalized/admin/mastery/knowledge-points/3/students?risk=HIGH
+     */
+    @GetMapping("/knowledge-points/{knowledgePointId}/students")
+    public ResponseEntity<Map<String, Object>>
+    getKnowledgePointStudents(
+            @PathVariable Long knowledgePointId,
+            @RequestParam(required = false) String risk) {
+
+        adminAccessService.requireAdmin();
+
+        return ResponseEntity.ok(
+                overviewService.getKnowledgePointStudents(
+                        knowledgePointId,
+                        risk
+                )
+        );
+    }
+
+    /**
      * 查询指定学生的知识点掌握度。
      *
      * 请求示例：
@@ -97,6 +125,48 @@ public class KnowledgeMasteryAdminController {
                 );
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 查询学生 × 知识点 当前掌握度矩阵（热力图数据源）。
+     *
+     * 支持分页（每页最多 8 名学生）与姓名/学号/用户名模糊搜索。
+     *
+     * 请求示例：
+     * GET /personalized/admin/mastery/matrix?keyword=张&page=1&pageSize=8
+     */
+    @GetMapping("/matrix")
+    public ResponseEntity<Map<String, Object>>
+    getMasteryMatrix(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize) {
+        adminAccessService.requireAdmin();
+
+        return ResponseEntity.ok(
+                masteryHistoryService.getAdminMatrix(
+                        keyword,
+                        page,
+                        pageSize
+                )
+        );
+    }
+
+    /**
+     * 查询班级掌握度历史趋势（按天，仅整体平均线）。
+     *
+     * 请求示例：
+     * GET /personalized/admin/mastery/trend?days=30
+     */
+    @GetMapping("/trend")
+    public ResponseEntity<Map<String, Object>>
+    getMasteryTrend(
+            @RequestParam(required = false) Integer days) {
+        adminAccessService.requireAdmin();
+
+        return ResponseEntity.ok(
+                masteryHistoryService.getAdminTrend(days)
+        );
     }
 
     /**

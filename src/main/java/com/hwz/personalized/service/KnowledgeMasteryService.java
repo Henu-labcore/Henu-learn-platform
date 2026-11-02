@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -66,11 +67,14 @@ public class KnowledgeMasteryService {
     private final KnowledgePointMapper knowledgePointMapper;
     private final StudentKnowledgeMasteryMapper masteryMapper;
 
+    private final MasteryHistoryService masteryHistoryService;
+
     public KnowledgeMasteryService(
             JdbcTemplate jdbcTemplate,
             UserMapper userMapper,
             KnowledgePointMapper knowledgePointMapper,
-            StudentKnowledgeMasteryMapper masteryMapper) {
+            StudentKnowledgeMasteryMapper masteryMapper,
+            MasteryHistoryService masteryHistoryService) {
         this.jdbcTemplate =
                 jdbcTemplate;
 
@@ -82,6 +86,9 @@ public class KnowledgeMasteryService {
 
         this.masteryMapper =
                 masteryMapper;
+
+        this.masteryHistoryService =
+                masteryHistoryService;
     }
 
     /**
@@ -122,6 +129,15 @@ public class KnowledgeMasteryService {
                     );
 
             saveOrUpdate(mastery);
+
+            /*
+             * 按天保留一份历史快照，供趋势图与热力图使用。
+             * 同一天重复重算只会覆盖当天最后一条。
+             */
+            masteryHistoryService.recordSnapshot(
+                    mastery,
+                    LocalDate.now()
+            );
 
             results.add(mastery);
         }

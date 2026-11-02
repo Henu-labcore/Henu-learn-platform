@@ -21,9 +21,9 @@ public interface LearnAnalyticsMapper {
             "  COALESCE(SUM(lr.complete_time IS NULL AND (lr.learn_duration_sec > 0 OR lr.first_learn_time IS NOT NULL)), 0) AS inProgressCount,",
             "  COALESCE(SUM(COALESCE(lr.learn_duration_sec, 0)), 0) AS learnDurationSec,",
             "  MAX(lr.updated_at) AS lastActiveTime,",
-            "  (SELECT COUNT(*) FROM learning_item) AS totalCourseCount,",
+            "  (SELECT COUNT(*) FROM learning_item WHERE status = 'PUBLISHED') AS totalCourseCount,",
             "  IFNULL(",
-            "    SUM(lr.complete_time IS NOT NULL) / NULLIF((SELECT COUNT(*) FROM learning_item), 0),",
+            "    SUM(lr.complete_time IS NOT NULL) / NULLIF((SELECT COUNT(*) FROM learning_item WHERE status = 'PUBLISHED'), 0),",
             "    0",
             "  ) AS completionRate",
             "FROM learning_record lr",
@@ -40,6 +40,7 @@ public interface LearnAnalyticsMapper {
             "FROM learning_item li",
             "LEFT JOIN learning_record lr",
             "  ON lr.item_pk = li.item_pk AND lr.user_id = #{userId}",
+            "WHERE li.status = 'PUBLISHED'",
             "GROUP BY COALESCE(NULLIF(li.category, ''), 'Uncategorized')",
             "ORDER BY totalCount DESC, learnDurationSec DESC"
     })
@@ -54,6 +55,7 @@ public interface LearnAnalyticsMapper {
             "FROM learning_item li",
             "LEFT JOIN learning_record lr",
             "  ON lr.item_pk = li.item_pk AND lr.user_id = #{userId}",
+            "WHERE li.status = 'PUBLISHED'",
             "GROUP BY COALESCE(NULLIF(li.difficulty, ''), 'Unknown')"
     })
     List<DifficultyProgressDTO> selectByDifficulty(@Param("userId") Long userId);

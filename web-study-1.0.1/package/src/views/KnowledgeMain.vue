@@ -18,10 +18,9 @@
               <button
                 type="button"
                 class="section-tab"
-                :class="{ 'is-active': activeSection === 'dashboard' }"
-                @click="activeSection = 'dashboard'"
+                @click="goLearningData"
               >
-                数据面板
+                学习数据
               </button>
             </div>
           </div>
@@ -60,22 +59,118 @@
         </div>
       </div>
 
+      <!-- 目录面包屑：知识目录 / 栏目 / 类别 -->
+      <nav
+        v-if="activeSection === 'cards' && (level > 1 || searchKeyword.trim())"
+        class="directory-breadcrumb"
+        aria-label="知识目录路径"
+      >
+        <button type="button" class="breadcrumb-link" @click="goRoot">
+          知识目录
+        </button>
+
+        <template v-if="currentGroup">
+          <span class="breadcrumb-sep">/</span>
+
+          <button
+            type="button"
+            class="breadcrumb-link"
+            @click="openGroup(currentGroup.key)"
+          >
+            {{ currentGroup.name }}
+          </button>
+        </template>
+
+        <template v-if="selectedCategory">
+          <span class="breadcrumb-sep">/</span>
+          <span class="breadcrumb-current">{{ selectedCategory }}</span>
+        </template>
+
+        <span v-if="searchKeyword.trim()" class="breadcrumb-search">
+          搜索：{{ searchKeyword.trim() }}
+        </span>
+      </nav>
+
+      <!-- 文件夹目录：栏目 → 类别 -->
+      <section
+        v-if="activeSection === 'cards' && !showCards"
+        class="knowledge-directory"
+      >
+        <template v-if="level === 1">
+          <p class="directory-hint">选择一个栏目，逐层进入学习卡片</p>
+
+          <div class="folder-grid">
+            <button
+              v-for="group in knowledgeGroups"
+              :key="group.key"
+              type="button"
+              class="folder-card"
+              :class="{ 'is-empty': group.categories.length === 0 }"
+              @click="openGroup(group.key)"
+            >
+              <el-icon class="folder-card-icon">
+                <FolderOpened v-if="group.categories.length" />
+                <Folder v-else />
+              </el-icon>
+
+              <span class="folder-card-name">{{ group.name }}</span>
+
+              <span class="folder-card-meta">
+                {{
+                  group.categories.length
+                    ? `${group.categories.length} 个类别 · ${groupItemCount(group)} 张卡片`
+                    : '暂无栏目'
+                }}
+              </span>
+
+              <span class="folder-card-desc">{{ group.description }}</span>
+            </button>
+          </div>
+        </template>
+
+        <template v-else>
+          <p class="directory-hint">
+            选择「{{ currentGroup?.name }}」下的类别查看卡片
+          </p>
+
+          <div v-if="currentGroup?.categories.length" class="folder-grid">
+            <button
+              v-for="category in currentGroup.categories"
+              :key="category"
+              type="button"
+              class="folder-card is-category"
+              @click="openCategory(currentGroup.key, category)"
+            >
+              <el-icon class="folder-card-icon">
+                <FolderOpened />
+              </el-icon>
+
+              <span class="folder-card-name">{{ category }}</span>
+
+              <span class="folder-card-meta">
+                {{ categoryItemCount(category) }} 张卡片
+              </span>
+            </button>
+          </div>
+
+          <div v-else class="folder-empty">
+            该栏目暂无内容
+          </div>
+        </template>
+      </section>
+
       <!-- 新增计划摘要；原卡片、数据面板及实验事件保持不变。 -->
-      <LearningPlanSummary v-if="activeSection === 'cards'" />
+      <LearningPlanSummary v-if="activeSection === 'cards' && showCards" />
 
       <keep-alive>
         <KnowledgeCardsSection
-          v-if="activeSection === 'cards'"
+          v-if="activeSection === 'cards' && showCards"
           :loading="loading"
           :items="filteredItems"
           @show-details="showKnowledgeDetails"
           @open-details="openKnowledgeDetails"
           @start-learning="startLearning"
         />
-      </keep-alive>
-
-      <keep-alive>
-        <DashboardSection v-if="activeSection === 'dashboard'" />
       </keep-alive>
     </div>
 
@@ -130,14 +225,28 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { Folder, FolderOpened } from '@element-plus/icons-vue'
 import { getLearningItems, getLearningItemPreview } from '@/api/knowledge'
+import {
+  buildKnowledgeGroups,
+  findGroupKeyOfCategory
+} from '@/config/knowledgeGroups'
 import ExperimentOverlay from '@/components/ExperimentOverlay.vue'
 import KnowledgeCardsSection from '@/components/knowledge/KnowledgeCardsSection.vue'
-import DashboardSection from '@/components/knowledge/DashboardSection.vue'
 import LearningPlanSummary from '@/components/knowledge/LearningPlanSummary.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
+
+const goLearningData = () => {
+  router.push(
+    authStore.isAdmin
+      ? '/analytics/process'
+      : '/my-learning/process'
+  ).catch(() => {})
+}
 
 const loading = ref(false)
 const activeSection = ref('cards')
@@ -161,6 +270,70 @@ const categories = computed(() => {
   return Array.from(cats).sort()
 })
 
+// 栏目 → 类别 → 卡片 的目录结构
+const knowledgeGroups = computed(() => buildKnowledgeGroups(categories.value))
+
+const selectedGroupKey = computed(() => {
+  const queryGroup = typeof route.query.group === 'string' ? route.query.group : ''
+
+  if (queryGroup) {
+    return queryGroup
+  }
+
+  return selectedCategory.value
+    ? findGroupKeyOfCategory(categories.value, selectedCategory.value)
+    : ''
+})
+
+const currentGroup = computed(() => {
+  return knowledgeGroups.value.find(group => group.key === selectedGroupKey.value) || null
+})
+
+// 1 = 栏目列表，2 = 类别列表，3 = 卡片列表
+const level = computed(() => {
+  if (selectedCategory.value) {
+    return 3
+  }
+
+  return selectedGroupKey.value ? 2 : 1
+})
+
+// 搜索时直接展示卡片结果，不受当前层级限制
+const showCards = computed(() => {
+  return level.value === 3 || searchKeyword.value.trim() !== ''
+})
+
+const categoryItemCount = category => {
+  return items.value.filter(item => item.category === category).length
+}
+
+const groupItemCount = group => {
+  return group.categories.reduce(
+    (total, category) => total + categoryItemCount(category),
+    0
+  )
+}
+
+const goRoot = () => {
+  searchKeyword.value = ''
+  router.push({ path: '/knowledge' }).catch(() => {})
+}
+
+const openGroup = key => {
+  searchKeyword.value = ''
+  router.push({ path: '/knowledge', query: { group: key } }).catch(() => {})
+}
+
+const openCategory = (groupKey, category) => {
+  searchKeyword.value = ''
+
+  const query = groupKey
+    ? { group: groupKey, category }
+    : { category }
+
+  router.push({ path: '/knowledge', query }).catch(() => {})
+}
+
 const filteredItems = computed(() => {
   if (!items.value.length) return []
   let list = items.value
@@ -175,13 +348,17 @@ const filteredItems = computed(() => {
 })
 
 const filterByCategory = () => {
-  const query = { ...route.query }
-  if (selectedCategory.value) {
-    query.category = selectedCategory.value
-  } else {
-    delete query.category
+  if (!selectedCategory.value) {
+    goRoot()
+    return
   }
-  router.replace({ path: '/knowledge', query }).catch(() => {})
+
+  const groupKey = findGroupKeyOfCategory(
+    categories.value,
+    selectedCategory.value
+  )
+
+  openCategory(groupKey, selectedCategory.value)
 }
 
 const syncCategoryFromRoute = () => {
@@ -284,6 +461,14 @@ watch(
   () => route.query.category,
   () => {
     syncCategoryFromRoute()
+  }
+)
+
+// 侧边栏切换栏目 / 类别时清空搜索，避免仍停留在上一次搜索结果
+watch(
+  () => [route.query.group, route.query.category],
+  () => {
+    searchKeyword.value = ''
   }
 )
 
@@ -530,5 +715,158 @@ watch(experimentVisible, (visible) => {
   margin: 0;
   padding: 4px 0;
   line-height: 1.7;
+}
+
+/* 知识目录：面包屑 + 文件夹卡片 */
+.directory-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 24px 16px;
+  padding: 10px 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.breadcrumb-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.breadcrumb-link:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: #cbd5e1;
+}
+
+.breadcrumb-current {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.breadcrumb-search {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.knowledge-directory {
+  margin: 0 24px 24px;
+}
+
+.directory-hint {
+  margin: 0 0 14px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.folder-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px 20px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.folder-card:hover {
+  transform: translateY(-3px);
+  border-color: #93c5fd;
+  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.15);
+}
+
+.folder-card.is-empty {
+  background: #f8fafc;
+  border-style: dashed;
+  cursor: default;
+}
+
+.folder-card.is-empty:hover {
+  transform: none;
+  border-color: #e2e8f0;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+}
+
+.folder-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 22px;
+}
+
+.folder-card.is-empty .folder-card-icon {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.folder-card-name {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.folder-card-meta {
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.folder-card.is-empty .folder-card-meta {
+  color: #94a3b8;
+}
+
+.folder-card-desc {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.folder-empty {
+  padding: 28px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #94a3b8;
+  text-align: center;
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .directory-breadcrumb,
+  .knowledge-directory {
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+
+  .folder-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

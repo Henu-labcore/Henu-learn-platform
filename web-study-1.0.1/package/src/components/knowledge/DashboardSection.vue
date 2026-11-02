@@ -56,7 +56,7 @@
           </div>
           <div class="summary-heatmap">
             <div class="summary-heatmap-head">
-              <h3>学习热力图</h3>
+              <h3>学习活跃热力图</h3>
               <span>最近 12 周</span>
             </div>
             <div class="heatmap-grid">
@@ -125,7 +125,7 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2>完成趋势</h2>
+          <h2>学习完成趋势</h2>
           <div class="panel-actions">
             <el-radio-group v-model="trendDays" size="small">
               <el-radio-button v-for="option in trendOptions" :key="option.value" :label="option.value">
@@ -171,26 +171,6 @@
               </el-button>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section class="panel recommendation-panel" v-if="recommendation">
-        <div class="panel-header">
-          <h2>推荐继续</h2>
-        </div>
-        <div class="recommendation-content">
-          <div>
-            <h3>{{ recommendation.title }}</h3>
-            <div class="recent-tags">
-              <span>{{ recommendation.category }}</span>
-              <span>{{ recommendation.difficulty }}</span>
-              <span>{{ formatDuration(recommendation.learnDurationSec) }}</span>
-            </div>
-            <p class="recent-time">上次学习：{{ formatTime(recommendation.lastLearnTime) }}</p>
-          </div>
-          <el-button type="primary" @click="goToLearning(recommendation.itemPk)">
-            继续学习
-          </el-button>
         </div>
       </section>
       </div>
@@ -246,7 +226,7 @@ const summaryRate = computed(() => {
 
 const recentList = computed(() => {
   const list = dashboard.value?.recent || []
-  return list.map(item => ({
+  return list.slice(0, 5).map(item => ({
     ...item,
     category: withDefaultCategory(item.category),
     difficulty: withDefaultDifficulty(item.difficulty)
@@ -455,15 +435,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .dashboard-page {
-  padding: 24px 28px 40px;
-  background: #FFFFFF;
   min-height: 100%;
   font-family: 'Microsoft YaHei', Arial, sans-serif;
 }
 
 .dashboard-container {
-  max-width: 1180px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .dashboard-header {
@@ -835,16 +812,6 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: flex-end;
   gap: 12px;
-}
-
-.recommendation-panel {
-  background: linear-gradient(135deg, #eff6ff 0%, #e0f2fe 100%);
-}
-
-.recommendation-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 .status-panel {

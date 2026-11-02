@@ -19,9 +19,7 @@
               <el-dropdown-item v-if="authStore.isAdmin" command="content">学习内容管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="knowledge-points">知识点管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" divided disabled>数据监控</el-dropdown-item>
-              <el-dropdown-item v-if="authStore.isAdmin" command="dashboard">平台学习总览</el-dropdown-item>
-              <el-dropdown-item v-if="authStore.isAdmin" command="mastery-risks">掌握度风险预警</el-dropdown-item>
-              <el-dropdown-item v-if="authStore.isAdmin" command="plan-risks">学习计划风险</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" command="analytics">学情分析</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" divided disabled>系统管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="users">用户管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="assignments-admin">考核管理</el-dropdown-item>
@@ -64,50 +62,102 @@
                 <button
                   type="button"
                   class="submenu-item"
-                  :class="{ active: isKnowledgeRoute && !selectedCategory }"
-                  style="transition-delay: 0ms"
+                  :class="{ active: isKnowledgeRoute && !selectedCategory && !selectedGroup }"
                   @click.stop="handleCategoryChange('')"
                 >
-                  全部分类
+                  知识目录
                 </button>
+
                 <template v-if="categoriesLoading">
                   <button type="button" class="submenu-item submenu-item-muted" disabled>
                     加载分类中…
                   </button>
                 </template>
+
                 <template v-else>
-                  <button
-                    v-for="(category, index) in categories"
-                    :key="category"
-                    type="button"
-                    class="submenu-item"
-                    :class="{ active: isKnowledgeRoute && selectedCategory === category }"
-                    :style="{ transitionDelay: `${index * 35}ms` }"
-                    @click.stop="handleCategoryChange(category)"
+                  <div
+                    v-for="group in knowledgeGroups"
+                    :key="group.key"
+                    class="submenu-group"
                   >
-                    {{ category }}
-                  </button>
+                    <div
+                      class="submenu-item submenu-folder"
+                      :class="{
+                        expanded: expandedGroups[group.key],
+                        'group-active':
+                          isKnowledgeRoute
+                          && selectedGroup === group.key
+                      }"
+                    >
+                      <button
+                        type="button"
+                        class="folder-main"
+                        @click.stop="handleGroupOpen(group.key)"
+                      >
+                        <el-icon class="folder-icon">
+                          <FolderOpened v-if="expandedGroups[group.key]" />
+                          <Folder v-else />
+                        </el-icon>
+
+                        <span>{{ group.name }}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        class="folder-toggle"
+                        :aria-expanded="expandedGroups[group.key] ? 'true' : 'false'"
+                        :aria-label="`${expandedGroups[group.key] ? '收起' : '展开'}${group.name}`"
+                        @click.stop="toggleGroup(group.key)"
+                      >
+                        <el-icon class="folder-arrow">
+                          <ArrowDown />
+                        </el-icon>
+                      </button>
+                    </div>
+
+                    <transition name="submenu-slide">
+                      <div
+                        v-show="expandedGroups[group.key]"
+                        class="submenu-children"
+                      >
+                        <button
+                          v-for="category in group.categories"
+                          :key="category"
+                          type="button"
+                          class="submenu-item submenu-child"
+                          :class="{
+                            active:
+                              isKnowledgeRoute
+                              && selectedCategory === category
+                          }"
+                          @click.stop="handleCategoryChange(category, group.key)"
+                        >
+                          {{ category }}
+                        </button>
+
+                        <div
+                          v-if="group.categories.length === 0"
+                          class="submenu-empty"
+                        >
+                          暂无栏目
+                        </div>
+                      </div>
+                    </transition>
+                  </div>
                 </template>
               </div>
             </transition>
           </div>
 
+          <!-- 学习过程与能力画像合并为一个入口 -->
           <router-link
-            to="/learn-dashboard"
+            v-if="!authStore.isAdmin"
+            to="/my-learning"
             class="menu-item"
-            :class="{ active: route.path === '/learn-dashboard' }"
-          >
-            <el-icon><DataAnalysis /></el-icon>
-            <span>学习数据面板</span>
-          </router-link>
-
-          <router-link
-            to="/my-mastery"
-            class="menu-item"
-            :class="{ active: route.path === '/my-mastery' }"
+            :class="{ active: route.path.startsWith('/my-learning') }"
           >
             <el-icon><TrendCharts /></el-icon>
-            <span>我的掌握度</span>
+            <span>我的学习</span>
           </router-link>
 
           <router-link
@@ -161,10 +211,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
-import { ArrowDown, Calendar, DataAnalysis, DocumentChecked, Menu, Reading, Star, TrendCharts, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, DocumentChecked, Folder, FolderOpened, Menu, Reading, Star, TrendCharts, UserFilled } from '@element-plus/icons-vue'
 import { useFavoritesStore } from '@/stores/studyStore'
 import LearningPlanNotifications from '@/components/knowledge/LearningPlanNotifications.vue'
 import { getLearningItems } from '@/api/knowledge'
+import { buildKnowledgeGroups, findGroupKeyOfCategory } from '@/config/knowledgeGroups'
 
 const router = useRouter()
 const route = useRoute()
@@ -177,8 +228,20 @@ watch(() => [authStore.isAuthenticated, authStore.user?.userId ?? authStore.user
 }, { immediate: true })
 const categories = ref([])
 const selectedCategory = ref('')
+const selectedGroup = ref('')
 const categoriesLoading = ref(false)
 const knowledgeExpanded = ref(false)
+
+// 知识学习目录：栏目 → 类别，映射规则统一放在 config/knowledgeGroups.js
+const expandedGroups = ref({
+  security: true,
+  ai: true,
+  dev: false
+})
+
+const knowledgeGroups = computed(() => buildKnowledgeGroups(categories.value))
+
+const groupKeyOf = category => findGroupKeyOfCategory(categories.value, category)
 
 const isKnowledgeRoute = computed(() => {
   return route.path.startsWith('/knowledge') || route.path.startsWith('/learning/item/')
@@ -218,22 +281,69 @@ const loadCategories = async () => {
     console.error('学习分类加载失败:', error)
   } finally {
     categoriesLoading.value = false
+    syncCategoryFromRoute()
   }
 }
 
 const syncCategoryFromRoute = () => {
   selectedCategory.value = typeof route.query.category === 'string' ? route.query.category : ''
+  selectedGroup.value = typeof route.query.group === 'string' ? route.query.group : ''
+
+  if (!selectedGroup.value && selectedCategory.value) {
+    selectedGroup.value = groupKeyOf(selectedCategory.value)
+  }
+
+  if (selectedCategory.value || selectedGroup.value) {
+    knowledgeExpanded.value = true
+  }
+
+  if (selectedGroup.value) {
+    expandedGroups.value[selectedGroup.value] = true
+  }
 }
 
-const handleCategoryChange = value => {
+const toggleGroup = key => {
+  expandedGroups.value[key] = !expandedGroups.value[key]
+}
+
+// 点击栏目名称：右侧页面进入该栏目的子文件夹列表
+const handleGroupOpen = key => {
+  knowledgeExpanded.value = true
+
+  const query = { ...route.query, group: key }
+
+  delete query.category
+
+  router.push({ path: '/knowledge', query }).catch(() => {})
+}
+
+const handleCategoryChange = (value, groupKey = '') => {
   const category = value || ''
   const query = { ...route.query }
+
   if (category) {
     query.category = category
+
+    const targetGroup = groupKey || groupKeyOf(category)
+
+    if (targetGroup) {
+      query.group = targetGroup
+    }
   } else {
     delete query.category
+    delete query.group
   }
+
   knowledgeExpanded.value = true
+
+  if (category) {
+    const targetGroup = query.group
+
+    if (targetGroup) {
+      expandedGroups.value[targetGroup] = true
+    }
+  }
+
   router.push({ path: '/knowledge', query }).catch(() => {})
 }
 
@@ -256,12 +366,8 @@ const handleLogout = async () => {
 }
 
 const handleUserCommand = command => {
-  if (command === 'plan-risks') {
-    router.push('/admin-learning-risks').catch(() => {})
-    return
-  }
-  if (command === 'mastery-risks') {
-    router.push('/mastery-risks').catch(() => {})
+  if (command === 'analytics') {
+    router.push('/analytics').catch(() => {})
     return
   }
   if (command === 'knowledge-points') {
@@ -280,10 +386,6 @@ const handleUserCommand = command => {
     router.push('/content-library').catch(() => {})
     return
   }
-  if (command === 'dashboard') {
-    router.push('/admin-dashboard').catch(() => {})
-    return
-  }
   if (command === 'assignments-admin') {
     router.push('/admin-assignments').catch(() => {})
     return
@@ -297,9 +399,9 @@ const handleUserCommand = command => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadCategories()
   syncCategoryFromRoute()
-  loadCategories()
 })
 
 watch(
@@ -558,6 +660,93 @@ watch(
 .submenu-item-muted {
   cursor: default;
   opacity: 0.7;
+}
+
+.submenu-group {
+  margin: 0;
+}
+
+.submenu-folder {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.folder-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 4px 0 20px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.folder-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.folder-toggle:hover {
+  background: rgba(219, 234, 254, 0.85);
+}
+
+.folder-main:focus-visible,
+.folder-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+.submenu-folder.group-active {
+  background: rgba(219, 234, 254, 0.75);
+  color: #1d4ed8;
+}
+
+.folder-icon {
+  font-size: 15px;
+}
+
+.folder-arrow {
+  margin-left: 0;
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.submenu-folder.expanded .folder-arrow {
+  transform: rotate(180deg);
+}
+
+.submenu-children {
+  margin-left: 16px;
+  padding-left: 10px;
+  border-left: 1px dashed #bfdbfe;
+  overflow: hidden;
+}
+
+.submenu-child {
+  padding-left: 16px;
+  font-size: 12.5px;
+}
+
+.submenu-empty {
+  padding: 8px 18px;
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 .menu-item {
