@@ -80,12 +80,22 @@
           {{ error }}
         </div>
         <iframe
+          ref="experimentIframeRef"
           v-show="iframeSrc"
           class="experiment-iframe"
           :src="iframeSrc"
           @load="handleLoad"
         ></iframe>
       </div>
+      <!-- 实验环境保持全屏，AI 助手以网页浮层覆盖，不修改 JupyterLite 内部结构。 -->
+      <AiStudyAssistant
+        v-if="experimentId"
+        :item-pk="experimentId"
+        :item-title="experimentTitle"
+        scene="EXPERIMENT"
+        :read-active-cell="readActiveCell"
+        :execute-active-cell="executeActiveCell"
+      />
     </div>
   </transition>
 </template>
@@ -95,6 +105,7 @@ import { ref, watch, onBeforeUnmount } from 'vue'
 import request from '@/api/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { completeLearningProgress } from '@/api/knowledge'
+import AiStudyAssistant from '@/components/AiStudyAssistant.vue'
 
 const props = defineProps({
   modelValue: {
@@ -121,6 +132,82 @@ const completeDialogVisible = ref(false)
 const completeRemark = ref('')
 const isCompleting = ref(false)
 const isResetting = ref(false)
+const experimentIframeRef = ref(null)
+
+/**
+ * JupyterLite 与主站同源部署，因此可以安全读取当前激活单元的可见编辑器文本。
+ * 这里只读取 DOM；执行动作由 executeActiveCell 单独完成，跨域部署时会给出明确错误。
+ */
+const readActiveCell = () => {
+  const iframe = experimentIframeRef.value
+  if (!iframe?.contentDocument) throw new Error('实验环境尚未加载完成')
+  try {
+    const doc = iframe.contentDocument
+    const activeCell = doc.querySelector('.jp-Notebook-cell.jp-mod-active, .jp-Cell.jp-mod-active')
+    if (!activeCell) return null
+    const editor = activeCell.querySelector('.cm-content')
+    const code = editor?.innerText?.trim() || ''
+    const outputNodes = activeCell.querySelectorAll('.jp-OutputArea-output')
+    const output = Array.from(outputNodes).map(node => node.innerText?.trim()).filter(Boolean).join('\n')
+    return { code, output }
+  } catch (error) {
+    if (error?.name === 'SecurityError') throw new Error('实验环境与主站不同源，无法读取当前代码单元')
+    throw error
+  }
+}
+
+/**
+ * 触发 JupyterLite 当前代码单元的 Shift+Enter，并等待输出趋于稳定。
+ * 返回“代码 + 实际输出”后由 AI 助手作为附加上下文发送，从而形成执行与分析闭环。
+ */
+const executeActiveCell = async () => {
+  const iframe = experimentIframeRef.value
+  if (!iframe?.contentDocument) throw new Error('实验环境尚未加载完成')
+  try {
+    const doc = iframe.contentDocument
+    const activeCell = doc.querySelector('.jp-Notebook-cell.jp-mod-active, .jp-Cell.jp-mod-active')
+    const editor = activeCell?.querySelector('.cm-content')
+    const code = editor?.innerText?.trim() || ''
+    if (!activeCell || !editor || !code) throw new Error('请先选中一个包含代码的单元')
+
+    const initialOutput = Array.from(activeCell.querySelectorAll('.jp-OutputArea-output'))
+      .map(node => node.innerText?.trim()).filter(Boolean).join('\n')
+    const runButton = doc.querySelector(
+      '[data-command="notebook:run-cell-and-select-next"], button[title*="Run the selected"]'
+    )
+    if (runButton) {
+      runButton.click()
+    } else {
+      // 不同 JupyterLite 版本的工具栏结构不同，找不到运行按钮时回退到标准快捷键。
+      editor.focus()
+      editor.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true, cancelable: true,
+        view: iframe.contentWindow
+      }))
+    }
+
+    // 无输出代码也可能执行成功；轮询到输出连续稳定或达到 15 秒上限后返回。
+    let previousOutput = ''
+    let stableRounds = 0
+    for (let round = 0; round < 50; round += 1) {
+      await new Promise(resolve => window.setTimeout(resolve, 300))
+      const output = Array.from(activeCell.querySelectorAll('.jp-OutputArea-output'))
+        .map(node => node.innerText?.trim()).filter(Boolean).join('\n')
+      if (output && output === previousOutput) stableRounds += 1
+      else stableRounds = 0
+      previousOutput = output
+      const running = activeCell.classList.contains('jp-mod-running')
+      const outputChanged = output !== initialOutput
+      if ((outputChanged && stableRounds >= 2) || (!running && !initialOutput && !output && round >= 9)) {
+        return { code, output }
+      }
+    }
+    return { code, output: previousOutput }
+  } catch (error) {
+    if (error?.name === 'SecurityError') throw new Error('实验环境与主站不同源，无法执行当前代码单元')
+    throw error
+  }
+}
 
 const lockBody = () => {
   scrollY.value = window.scrollY || 0

@@ -13,23 +13,28 @@ logging.level.com.hwz=${LABCORE_LOG_LEVEL:INFO}
 
 server.address=${LABCORE_SERVER_ADDRESS:0.0.0.0}
 labcore.cors.allowed-origins=${LABCORE_CORS_ALLOWED_ORIGINS:https://labcore.henu.edu.cn,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080}
-labcore.learning.template-storage-dir=${LABCORE_TEMPLATE_STORAGE_DIR:classpath:learning-templates}
-labcore.assignment.upload-dir=${LABCORE_ASSIGNMENT_UPLOAD_DIR:data/assignment-submissions}
-labcore.assignment.material-dir=${LABCORE_ASSIGNMENT_MATERIAL_DIR:data/assignment-materials}
+labcore.learning.template-storage-dir=${LABCORE_TEMPLATE_STORAGE_DIR:runtime/learning-templates}
+labcore.assignment.upload-dir=${LABCORE_ASSIGNMENT_UPLOAD_DIR:runtime/assignment-submissions}
+labcore.assignment.material-dir=${LABCORE_ASSIGNMENT_MATERIAL_DIR:runtime/assignment-materials}
 labcore.assignment.batch-download-max-bytes=${LABCORE_ASSIGNMENT_BATCH_DOWNLOAD_MAX_BYTES:21474836480}
 labcore.assignment.max-files-per-submission=${LABCORE_ASSIGNMENT_MAX_FILES_PER_SUBMISSION:5}
 labcore.assignment.max-bytes-per-submission=${LABCORE_ASSIGNMENT_MAX_BYTES_PER_SUBMISSION:1073741824}
-labcore.assignment.download-temp-dir=${LABCORE_ASSIGNMENT_DOWNLOAD_TEMP_DIR:data/assignment-download-temp}
-labcore.assignment.download-temp-ttl-hours=${LABCORE_ASSIGNMENT_DOWNLOAD_TEMP_TTL_HOURS:6}
-labcore.assignment.download-temp-min-free-bytes=${LABCORE_ASSIGNMENT_DOWNLOAD_TEMP_MIN_FREE_BYTES:1073741824}
-labcore.assignment.download-temp-cleanup-interval-ms=${LABCORE_ASSIGNMENT_DOWNLOAD_TEMP_CLEANUP_INTERVAL_MS:3600000}
 spring.servlet.multipart.max-file-size=${LABCORE_MULTIPART_MAX_FILE_SIZE:300MB}
 spring.servlet.multipart.max-request-size=${LABCORE_MULTIPART_MAX_REQUEST_SIZE:330MB}
 labcore.auth.access-token-secret=${LABCORE_TOKEN_SECRET:CHANGE_ME_TO_A_LONG_RANDOM_SECRET}
 labcore.auth.access-token-ttl-seconds=${LABCORE_ACCESS_TOKEN_TTL_SECONDS:7200}
-labcore.auth.download-ticket-ttl-seconds=${LABCORE_DOWNLOAD_TICKET_TTL_SECONDS:300}
-labcore.auth.registration-enabled=${LABCORE_AUTH_REGISTRATION_ENABLED:false}
+labcore.admin.default-password=${LABCORE_ADMIN_DEFAULT_PASSWORD:Admin@12345678}
 spring.jackson.deserialization.fail-on-unknown-properties=false
 spring.jackson.time-zone=${LABCORE_TIME_ZONE:Asia/Shanghai}
 server.error.include-stacktrace=never
 server.error.include-message=never
+
+# AI 助学模块：未配置时自动进入明确标识的本地演示模式。
+labcore.ai.api-url=${LABCORE_AI_API_URL:https://api.deepseek.com/chat/completions}
+labcore.ai.api-key=${LABCORE_AI_API_KEY:}
+labcore.ai.model=${LABCORE_AI_MODEL:deepseek-v4-flash}
+labcore.ai.max-history=${LABCORE_AI_MAX_HISTORY:12}
+labcore.ai.max-tokens=${LABCORE_AI_MAX_TOKENS:2048}
+labcore.ai.rate-limit-per-minute=${LABCORE_AI_RATE_LIMIT_PER_MINUTE:12}
+labcore.ai.max-concurrent-per-user=${LABCORE_AI_MAX_CONCURRENT_PER_USER:2}
+labcore.ai.max-retries=${LABCORE_AI_MAX_RETRIES:2}

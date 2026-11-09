@@ -3,7 +3,6 @@ package com.hwz.common.filter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hwz.common.Result;
 import com.hwz.common.auth.AccessTokenService;
-import com.hwz.common.auth.DownloadTicketService;
 import com.hwz.common.context.BaseContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,14 +24,10 @@ public class AuthContextFilter extends OncePerRequestFilter {
     private static final String AUTH_HEADER = "Authorization";
 
     private final AccessTokenService accessTokenService;
-    private final DownloadTicketService downloadTicketService;
     private final ObjectMapper objectMapper;
 
-    public AuthContextFilter(AccessTokenService accessTokenService,
-                             DownloadTicketService downloadTicketService,
-                             ObjectMapper objectMapper) {
+    public AuthContextFilter(AccessTokenService accessTokenService, ObjectMapper objectMapper) {
         this.accessTokenService = accessTokenService;
-        this.downloadTicketService = downloadTicketService;
         this.objectMapper = objectMapper;
     }
 
@@ -48,27 +43,15 @@ public class AuthContextFilter extends OncePerRequestFilter {
             }
             if (path != null && path.startsWith("/api") && !path.startsWith("/api/auth")) {
                 String authorization = request.getHeader(AUTH_HEADER);
-                if (StringUtils.hasText(authorization)) {
-                    try {
-                        BaseContext.setCurrentId(accessTokenService.verifyAndGetUserId(authorization));
-                    } catch (ResponseStatusException ex) {
-                        writeError(response, ex.getStatus().value(), ex.getReason());
-                        return;
-                    }
-                } else if (isDownloadPath(path)) {
-                    String ticket = request.getParameter("ticket");
-                    if (!StringUtils.hasText(ticket)) {
-                        writeError(response, HttpStatus.UNAUTHORIZED.value(), "Please log in first");
-                        return;
-                    }
-                    try {
-                        BaseContext.setCurrentId(downloadTicketService.verifyAndGetUserId(ticket));
-                    } catch (ResponseStatusException ex) {
-                        writeError(response, ex.getStatus().value(), ex.getReason());
-                        return;
-                    }
-                } else {
+                if (!StringUtils.hasText(authorization)) {
                     writeError(response, HttpStatus.UNAUTHORIZED.value(), "Please log in first");
+                    return;
+                }
+                try {
+                    Long userId = accessTokenService.verifyAndGetUserId(authorization);
+                    BaseContext.setCurrentId(userId);
+                } catch (ResponseStatusException ex) {
+                    writeError(response, ex.getStatus().value(), ex.getReason());
                     return;
                 }
             }
@@ -76,10 +59,6 @@ public class AuthContextFilter extends OncePerRequestFilter {
         } finally {
             BaseContext.clear();
         }
-    }
-
-    private boolean isDownloadPath(String path) {
-        return path.startsWith("/api/admin/assignments/") && path.contains("/submissions/files/download/");
     }
 
     private void writeError(HttpServletResponse response, int status, String message) throws IOException {

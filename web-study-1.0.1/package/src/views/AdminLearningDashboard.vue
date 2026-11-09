@@ -64,6 +64,34 @@
           </div>
         </section>
 
+        <!-- 高频求助课程只做教学观察，不参与原平台评分。 -->
+        <section class="panel popular-ai-panel">
+          <div class="panel-header">
+            <div>
+              <h2>高频求助课程 TOP 5</h2>
+              <span class="panel-sub">根据 AI 助手中的学生提问次数统计，不展示对话正文</span>
+            </div>
+            <span class="popular-ai-badge">教学观察</span>
+          </div>
+          <div class="ai-usage-grid">
+            <div><span>累计请求</span><strong>{{ aiUsage.totalRequests }}</strong></div>
+            <div><span>今日请求</span><strong>{{ aiUsage.todayRequests }}</strong></div>
+            <div><span>成功 / 失败</span><strong>{{ aiUsage.successfulRequests }} / {{ aiUsage.failedRequests }}</strong></div>
+            <div><span>累计 Token</span><strong>{{ formatNumber(aiUsage.totalTokens) }}</strong></div>
+            <div><span>平均耗时</span><strong>{{ aiUsage.averageLatencyMs }} ms</strong></div>
+          </div>
+          <div v-if="popularAiItems.length === 0" class="popular-ai-empty">
+            产生 AI 问答后，这里会显示学生提问较多的学习内容。
+          </div>
+          <div v-else class="popular-ai-list">
+            <div v-for="(item, index) in popularAiItems" :key="item.itemPk" class="popular-ai-row">
+              <span class="popular-ai-rank">{{ String(index + 1).padStart(2, '0') }}</span>
+              <span class="popular-ai-name">{{ item.title }}</span>
+              <strong>{{ item.questionCount }} 次提问</strong>
+            </div>
+          </div>
+        </section>
+
         <!-- 用户进度表格 -->
         <section class="panel">
           <div class="panel-header">
@@ -76,40 +104,11 @@
                 clearable
                 @input="filterUsers"
               />
-              <el-button v-if="!exportMode" :icon="Download" @click="startExportMode">导出</el-button>
-              <template v-else>
-                <span class="selection-summary">已选 {{ selectedUsers.length }} 人</span>
-                <el-button
-                  type="primary"
-                  :loading="exporting"
-                  :disabled="selectedUsers.length === 0"
-                  @click="exportSelectedRecords"
-                >
-                  导出选中
-                </el-button>
-                <el-button :loading="exporting" @click="exportAllRecords">导出全部</el-button>
-                <el-button
-                  :icon="Close"
-                  circle
-                  title="退出导出模式"
-                  :disabled="exporting"
-                  @click="exitExportMode"
-                />
-              </template>
             </div>
           </div>
 
           <div class="users-table-container">
-            <el-table
-              ref="tableRef"
-              :data="pagedUsers"
-              row-key="userId"
-              stripe
-              style="width: 100%"
-              :header-cell-style="{background:'#f9fafb',color:'#374151',fontWeight:'600'}"
-              @selection-change="handleSelectionChange"
-            >
-              <el-table-column v-if="exportMode" type="selection" width="48" :reserve-selection="true" />
+            <el-table :data="filteredUsers" stripe style="width: 100%" :header-cell-style="{background:'#f9fafb',color:'#374151',fontWeight:'600'}">
               <el-table-column prop="username" label="用户名" min-width="100" />
               <el-table-column prop="displayName" label="显示名" min-width="120" />
               <el-table-column label="进度" min-width="180">
@@ -131,7 +130,7 @@
                 </template>
               </el-table-column>
               <el-table-column prop="lastActiveTime" label="最后活跃" min-width="140" />
-              <el-table-column label="操作" min-width="110" align="center">
+              <el-table-column label="操作" min-width="100" align="center">
                 <template #default="scope">
                   <el-button
                     type="primary"
@@ -143,17 +142,6 @@
                 </template>
               </el-table-column>
             </el-table>
-          </div>
-          <div class="table-footer">
-            <el-pagination
-              class="table-pagination"
-              v-model:current-page="currentPage"
-              v-model:page-size="pageSize"
-              :page-sizes="[10, 20, 50]"
-              :total="filteredUsers.length"
-              layout="total, sizes, prev, pager, next, jumper"
-              @size-change="handlePageSizeChange"
-            />
           </div>
         </section>
 
@@ -200,7 +188,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import request from '@/api/request'
 import { ElMessage } from 'element-plus'
-import { Close, Download, Refresh, Loading } from '@element-plus/icons-vue'
+import { Refresh, Loading } from '@element-plus/icons-vue'
+import { getAiPopularItems, getAiUsageOverview } from '@/api/aiAssistant'
 
 const router = useRouter()
 
@@ -217,21 +206,19 @@ const summary = ref({
 
 const searchKeyword = ref('')
 const filteredUsers = ref([])
-const tableRef = ref(null)
-const selectedUsers = ref([])
-const currentPage = ref(1)
-const pageSize = ref(10)
-const exporting = ref(false)
-const exportMode = ref(false)
-
-const pagedUsers = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredUsers.value.slice(start, start + pageSize.value)
+const popularAiItems = ref([])
+const aiUsage = ref({
+  totalRequests: 0,
+  todayRequests: 0,
+  successfulRequests: 0,
+  failedRequests: 0,
+  totalTokens: 0,
+  averageLatencyMs: 0
 })
 
 // 计算完成率
 const completionRate = computed(() => {
-  if (summary.value.totalLearningItems === 0 || summary.value.totalUsers === 0) return 0
+  if (summary.value.totalLearningItems === 0) return 0
   return Math.round((summary.value.completedItems / (summary.value.totalUsers * summary.value.totalLearningItems)) * 100)
 })
 
@@ -247,11 +234,22 @@ const fetchDashboard = async () => {
   error.value = ''
 
   try {
-    const res = await request.get('/learning-progress/admin/summary')
+    // 新统计失败时不阻断原有学习看板，保证新增模块与原功能解耦。
+    const [res, popularResult, usageResult] = await Promise.all([
+      request.get('/learning-progress/admin/summary'),
+      getAiPopularItems().catch(err => {
+        console.warn('高频求助课程统计暂不可用', err)
+        return null
+      }),
+      getAiUsageOverview().catch(err => {
+        console.warn('AI 用量统计暂不可用', err)
+        return null
+      })
+    ])
     summary.value = res
     filteredUsers.value = [...res.userSummaries]
-    currentPage.value = 1
-    clearSelection()
+    popularAiItems.value = popularResult?.items || []
+    if (usageResult) aiUsage.value = usageResult
   } catch (err) {
     console.error('加载学习统计失败', err)
     error.value = '加载学习统计失败，请重试'
@@ -271,8 +269,6 @@ const filterUsers = () => {
       user.displayName.toLowerCase().includes(keyword)
     )
   }
-  currentPage.value = 1
-  clearSelection()
 }
 
 const refresh = () => {
@@ -282,75 +278,6 @@ const refresh = () => {
 const viewUserProgress = (userId) => {
   // 跳转到用户进度详情页面
   router.push(`/users/${userId}/progress`)
-}
-
-const startExportMode = () => {
-  exportMode.value = true
-}
-
-const exportSelectedRecords = async () => {
-  if (selectedUsers.value.length === 0) return
-  exporting.value = true
-  try {
-    const success = await downloadLearningRecords(
-      { userIds: selectedUsers.value.map(user => user.userId).join(',') },
-      `选中${selectedUsers.value.length}名学生的学习记录`
-    )
-    if (success) exitExportMode()
-  } finally {
-    exporting.value = false
-  }
-}
-
-const exportAllRecords = async () => {
-  exporting.value = true
-  try {
-    const success = await downloadLearningRecords({}, '全部学生学习记录')
-    if (success) exitExportMode()
-  } finally {
-    exporting.value = false
-  }
-}
-
-const exitExportMode = () => {
-  clearSelection()
-  exportMode.value = false
-}
-
-const handleSelectionChange = rows => {
-  const currentPageIds = new Set(pagedUsers.value.map(user => user.userId))
-  const retained = selectedUsers.value.filter(user => !currentPageIds.has(user.userId))
-  const merged = [...retained, ...rows]
-  selectedUsers.value = Array.from(new Map(merged.map(user => [user.userId, user])).values())
-}
-
-const clearSelection = () => {
-  selectedUsers.value = []
-  tableRef.value?.clearSelection()
-}
-
-const handlePageSizeChange = () => {
-  currentPage.value = 1
-}
-
-const downloadLearningRecords = async (params, filename) => {
-  try {
-    const blob = await request.get('/learning-progress/admin/export', { params, responseType: 'blob' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
-    ElMessage.success('学习记录已导出')
-    return true
-  } catch (err) {
-    console.error('导出学习记录失败', err)
-    ElMessage.error('导出学习记录失败')
-    return false
-  }
 }
 
 const formatDuration = (seconds) => {
@@ -368,6 +295,8 @@ const formatDuration = (seconds) => {
     return `${secs}秒`
   }
 }
+
+const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 
 onMounted(() => {
   fetchDashboard()
@@ -408,7 +337,6 @@ onMounted(() => {
 
 .header-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -458,9 +386,23 @@ onMounted(() => {
   font-size: 14px;
 }
 
+.popular-ai-panel { border-color: #dbeafe; background: linear-gradient(145deg, #fff 0%, #f5faff 100%); }
+.popular-ai-panel .panel-header > div { display: flex; flex-direction: column; gap: 5px; }
+.ai-usage-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.ai-usage-grid > div { padding: 12px; border: 1px solid #d9eafb; border-radius: 11px; background: #fff; }
+.ai-usage-grid span { display: block; margin-bottom: 5px; color: #71869a; font-size: 11px; }
+.ai-usage-grid strong { color: #174d7a; font-size: 16px; }
+.popular-ai-badge { padding: 6px 10px; border: 1px solid #b8dcfa; border-radius: 999px; background: #edf7ff; color: #1768ad; font-size: 12px; font-weight: 600; }
+.popular-ai-list { overflow: hidden; border-radius: 14px; background: #133d63; color: #fff; }
+.popular-ai-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 13px 17px; border-top: 1px solid rgba(255,255,255,.12); }
+.popular-ai-row:first-child { border-top: 0; }
+.popular-ai-rank { color: #7ebce9; font: 700 12px Consolas, monospace; }
+.popular-ai-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.popular-ai-row strong { color: #a9d8ff; font-size: 12px; }
+.popular-ai-empty { padding: 26px; border: 1px dashed #b8d8f2; border-radius: 13px; color: #71869a; text-align: center; }
+
 .panel-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
 }
@@ -574,24 +516,6 @@ onMounted(() => {
   border-bottom: 1px solid #f3f4f6;
 }
 
-.table-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.selection-summary {
-  color: #6b7280;
-  font-size: 13px;
-}
-
-.table-pagination {
-  margin-left: auto;
-}
-
 .progress-cell {
   display: flex;
   align-items: center;
@@ -692,6 +616,7 @@ onMounted(() => {
 }
 
 @media (max-width: 1024px) {
+  .ai-usage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .summary-grid {
     grid-template-columns: 1fr;
   }

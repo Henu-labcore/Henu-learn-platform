@@ -5,27 +5,17 @@ import com.hwz.assignment.dto.AssignmentDtos;
 import com.hwz.assignment.entity.AssignmentMaterial;
 import com.hwz.assignment.entity.AssignmentSubmissionFile;
 import com.hwz.assignment.service.AssignmentService;
-import com.hwz.assignment.service.BatchDownloadTask;
-import com.hwz.assignment.service.BatchDownloadTaskService;
 import com.hwz.common.PageResponse;
 import com.hwz.common.Result;
-import com.hwz.common.auth.DownloadTicketService;
 import com.hwz.common.entity.User;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
-import org.springframework.web.server.ResponseStatusException;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.Map;
@@ -36,17 +26,10 @@ public class AdminAssignmentController {
 
     private final AssignmentService assignmentService;
     private final AdminAccessService accessService;
-    private final DownloadTicketService downloadTicketService;
-    private final BatchDownloadTaskService batchDownloadTaskService;
 
-    public AdminAssignmentController(AssignmentService assignmentService,
-                                     AdminAccessService accessService,
-                                     DownloadTicketService downloadTicketService,
-                                     BatchDownloadTaskService batchDownloadTaskService) {
+    public AdminAssignmentController(AssignmentService assignmentService, AdminAccessService accessService) {
         this.assignmentService = assignmentService;
         this.accessService = accessService;
-        this.downloadTicketService = downloadTicketService;
-        this.batchDownloadTaskService = batchDownloadTaskService;
     }
 
     @GetMapping
@@ -116,72 +99,15 @@ public class AdminAssignmentController {
         return Result.ok(assignmentService.pageSubmissions(assignmentId, status, normalizePage(page), normalizePageSize(pageSize)));
     }
 
-    @PostMapping("/{assignmentId}/submissions/files/download-tasks")
-    public Result<AssignmentDtos.DownloadTaskResponse> createDownloadTask(@PathVariable Long assignmentId,
-                                                                          @RequestParam(required = false) String status) {
-        User admin = accessService.requireAdmin();
+    @GetMapping("/{assignmentId}/submissions/files/download")
+    public ResponseEntity<StreamingResponseBody> downloadSubmissionFiles(@PathVariable Long assignmentId,
+                                                                         @RequestParam(required = false) String status) {
+        accessService.requireAdmin();
         assignmentService.assertSubmissionFilesZipDownloadable(assignmentId, status);
-        BatchDownloadTask task = batchDownloadTaskService.createTask(admin.getId(), assignmentId, status);
-        return Result.ok(batchDownloadTaskService.toResponse(task));
-    }
-
-    @GetMapping("/{assignmentId}/submissions/files/download-tasks/{downloadId}")
-    public Result<AssignmentDtos.DownloadTaskResponse> downloadTask(@PathVariable Long assignmentId,
-                                                                    @PathVariable String downloadId) {
-        User admin = accessService.requireAdmin();
-        BatchDownloadTask task = batchDownloadTaskService.getOwnedTask(downloadId, admin.getId());
-        if (!task.getAssignmentId().equals(assignmentId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "下载任务不存在或已过期");
-        }
-        return Result.ok(batchDownloadTaskService.toResponse(task));
-    }
-
-    @PostMapping("/{assignmentId}/submissions/files/download-tasks/{downloadId}/ticket")
-    public Result<AssignmentDtos.DownloadTicketResponse> downloadTaskTicket(@PathVariable Long assignmentId,
-                                                                            @PathVariable String downloadId) {
-        User admin = accessService.requireAdmin();
-        BatchDownloadTask task = batchDownloadTaskService.getReadyTask(downloadId, admin.getId());
-        if (!task.getAssignmentId().equals(assignmentId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "下载任务不存在或已过期");
-        }
-        String ticket = downloadTicketService.issue(admin.getId(), task.getAssignmentId(), downloadId);
-        return Result.ok(AssignmentDtos.DownloadTicketResponse.builder()
-                .ticket(ticket)
-                .expiresInSeconds(downloadTicketService.getTtlSeconds())
-                .build());
-    }
-
-    @GetMapping("/{assignmentId}/submissions/files/download/{downloadId}")
-    public ResponseEntity<StreamingResponseBody> downloadTaskFile(@PathVariable Long assignmentId,
-                                                                  @PathVariable String downloadId,
-                                                                  @RequestParam(required = false) String ticket,
-                                                                  @RequestHeader(value = "Authorization", required = false) String authorization) throws IOException {
-        BatchDownloadTask task;
-        if (StringUtils.hasText(authorization)) {
-            User admin = accessService.requireAdmin();
-            task = batchDownloadTaskService.getReadyTask(downloadId, admin.getId());
-        } else {
-            DownloadTicketService.DownloadTicket downloadTicket = downloadTicketService.verifyScoped(ticket, assignmentId, downloadId);
-            task = batchDownloadTaskService.getReadyTask(downloadId, downloadTicket.getAdminUserId());
-        }
-        if (!task.getAssignmentId().equals(assignmentId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "下载任务不存在或已过期");
-        }
-        File zip = new File(task.getFilePath());
-        long zipSize = zip.length();
-        StreamingResponseBody body = outputStream -> {
-            try (InputStream in = new FileInputStream(zip)) {
-                byte[] buffer = new byte[8192];
-                int len;
-                while ((len = in.read(buffer)) >= 0) {
-                    outputStream.write(buffer, 0, len);
-                }
-            }
-        };
+        StreamingResponseBody body = outputStream -> assignmentService.writeSubmissionFilesZip(assignmentId, status, outputStream);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/zip"))
-                .contentLength(zipSize)
-                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(task.getFileName()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(assignmentService.submissionFilesZipName(assignmentId)))
                 .body(body);
     }
 

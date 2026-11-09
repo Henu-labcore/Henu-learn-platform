@@ -169,7 +169,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -177,9 +177,6 @@ import {
   getAdminAssignment,
   getAdminAssignmentSubmissions,
   getAdminSubmissionBatchDownloadInfo,
-  createAdminSubmissionDownloadTask,
-  getAdminSubmissionDownloadTask,
-  getAdminSubmissionDownloadTicket,
   getAdminSubmission,
   gradeSubmission,
   returnSubmission
@@ -199,7 +196,6 @@ const page = ref(1)
 const pageSize = ref(10)
 const submissionsTotal = ref(0)
 const batchDownloadLoading = ref(false)
-const pollTimer = ref(null)
 const downloadProgress = ref({ visible: false, name: '', percent: 0, label: '', indeterminate: false })
 const gradeForm = reactive({ score: null, feedback: '' })
 const canReviewCurrent = computed(() => {
@@ -268,114 +264,43 @@ const refreshSelected = async () => {
 const downloadAdminFile = file => downloadWithAuth(`/admin/assignments/files/${file.fileId}/download`, file.originalName)
 
 const downloadBatchFiles = async () => {
-  const status = submissionStatus.value
+  const query = submissionStatus.value ? `?status=${encodeURIComponent(submissionStatus.value)}` : ''
+  const fallback = `${assignment.value?.title || '考核'}-提交附件.zip`
   batchDownloadLoading.value = true
   try {
-    const info = await getAdminSubmissionBatchDownloadInfo(assignmentId, { status })
+    const info = await getAdminSubmissionBatchDownloadInfo(assignmentId, { status: submissionStatus.value })
     if (!info.fileCount) {
       ElMessage.warning('暂无可下载附件')
-      return
-    }
-    if (info.diskSpaceInsufficient) {
-      ElMessage.error('服务器临时存储空间不足，当前无法生成批量下载文件，请稍后重试或联系管理员')
       return
     }
     if (!info.allowed) {
       ElMessage.error(`附件总大小 ${formatSize(info.totalBytes)}，超过批量下载上限 ${formatSize(info.maxBytes)}，请按状态筛选或逐个下载`)
       return
     }
+    if (!supportsStreamDownload() && info.totalBytes > 1024 * 1024 * 1024) {
+      ElMessage.error('当前浏览器不支持大文件流式保存，请使用 Chrome/Edge 下载，或按状态筛选后分批下载')
+      return
+    }
     await ElMessageBox.confirm(
-      `将下载 ${info.fileCount} 个附件，估算大小 ${formatSize(info.totalBytes)}。`,
+      `将下载 ${info.fileCount} 个附件，估算大小 ${formatSize(info.totalBytes)}。下载期间请不要关闭页面。`,
       '确认批量下载',
       { type: 'warning', confirmButtonText: '开始下载', cancelButtonText: '取消' }
     )
-    const task = await createAdminSubmissionDownloadTask(assignmentId, { status })
-    downloadProgress.value = { visible: true, name: '正在生成下载文件', percent: 0, label: '准备中', indeterminate: true }
-    const readyTask = await pollDownloadTask(assignmentId, task.downloadId)
-    if (!readyTask) return
-    const ticketData = await getAdminSubmissionDownloadTicket(assignmentId, task.downloadId)
-    const prefix = import.meta.env.VITE_API_BASE_URL || '/api'
-    const url = `${prefix}/admin/assignments/${assignmentId}/submissions/files/download/${task.downloadId}?ticket=${encodeURIComponent(ticketData.ticket)}`
-    triggerNativeDownload(url)
-    ElMessage.success('文件已准备完成，已开始下载')
+    await downloadWithAuth(`/admin/assignments/${assignmentId}/submissions/files/download${query}`, fallback, { streamToDisk: true, expectedBytes: info.totalBytes })
   } catch (error) {
     if (error !== 'cancel' && error !== 'close' && error?.name !== 'AbortError') {
       console.error(error)
     }
   } finally {
-    stopPolling()
     batchDownloadLoading.value = false
-    window.setTimeout(resetDownloadProgress, 800)
   }
 }
 
-const pollDownloadTask = (assignmentId, downloadId) => {
-  const maxAttempts = 1200
-  return new Promise(resolve => {
-    let attempts = 0
-    const tick = async () => {
-      attempts++
-      let task
-      try {
-        task = await getAdminSubmissionDownloadTask(assignmentId, downloadId)
-      } catch {
-        resolve(null)
-        return
-      }
-      if (task.status === 'READY') {
-        resolve(task)
-        return
-      }
-      if (task.status === 'FAILED') {
-        ElMessage.error(task.message || '生成下载文件失败')
-        resolve(null)
-        return
-      }
-      if (task.status === 'EXPIRED') {
-        ElMessage.error('下载任务已过期，请重新发起下载')
-        resolve(null)
-        return
-      }
-      updatePreparingProgress(task)
-      if (attempts >= maxAttempts) {
-        ElMessage.error('生成下载文件超时，请稍后重试')
-        resolve(null)
-        return
-      }
-      pollTimer.value = setTimeout(tick, 1500)
-    }
-    pollTimer.value = setTimeout(tick, 1500)
-  })
-}
-
-const updatePreparingProgress = task => {
-  if (task.totalFiles > 0) {
-    downloadProgress.value.percent = Math.min(99, Math.round((task.processedFiles / task.totalFiles) * 100))
-    downloadProgress.value.label = `${task.processedFiles} / ${task.totalFiles} 个附件`
-    downloadProgress.value.indeterminate = false
-  } else {
-    downloadProgress.value.label = '准备中'
-    downloadProgress.value.indeterminate = true
+const downloadWithAuth = async (url, fallbackName, options = {}) => {
+  if (options.streamToDisk && supportsStreamDownload()) {
+    await downloadStreamToDisk(url, fallbackName)
+    return
   }
-}
-
-const stopPolling = () => {
-  if (pollTimer.value) {
-    clearTimeout(pollTimer.value)
-    pollTimer.value = null
-  }
-}
-
-const triggerNativeDownload = url => {
-  const link = document.createElement('a')
-  link.href = url
-  link.style.display = 'none'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-}
-
-const downloadWithAuth = async (url, fallbackName) => {
   const prefix = import.meta.env.VITE_API_BASE_URL || '/api'
   const response = await fetch(`${prefix}${url}`, {
     headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
@@ -391,6 +316,56 @@ const downloadWithAuth = async (url, fallbackName) => {
   link.download = resolveDownloadName(response, fallbackName)
   link.click()
   URL.revokeObjectURL(link.href)
+}
+
+const downloadStreamToDisk = async (url, fallbackName) => {
+  const fileHandle = await window.showSaveFilePicker({
+    suggestedName: fallbackName || 'download.zip',
+    types: [{ description: 'ZIP 文件', accept: { 'application/zip': ['.zip'] } }]
+  })
+  const prefix = import.meta.env.VITE_API_BASE_URL || '/api'
+  const response = await fetch(`${prefix}${url}`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+  })
+  if (!response.ok) {
+    const errorText = await response.text()
+    ElMessage.error(resolveErrorMessage(errorText) || '下载失败，请稍后重试')
+    return
+  }
+  const writable = await fileHandle.createWritable()
+  const total = Number(response.headers.get('Content-Length') || 0)
+  const reader = response.body?.getReader()
+  if (!reader) {
+    const blob = await response.blob()
+    await writable.write(blob)
+    await writable.close()
+    return
+  }
+  downloadProgress.value = {
+    visible: true,
+    name: fallbackName || 'download.zip',
+    percent: 0,
+    label: total ? '0%' : 'Downloading',
+    indeterminate: !total
+  }
+  try {
+    let loaded = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      await writable.write(value)
+      loaded += value.length
+      updateDownloadProgress(loaded, total)
+    }
+    downloadProgress.value.percent = 100
+    downloadProgress.value.label = '100%'
+    await writable.close()
+  } catch (error) {
+    await writable.abort()
+    throw error
+  } finally {
+    window.setTimeout(resetDownloadProgress, 800)
+  }
 }
 
 const readResponseBlobWithProgress = async (response, name) => {
@@ -441,6 +416,8 @@ const resetDownloadProgress = () => {
   downloadProgress.value = { visible: false, name: '', percent: 0, label: '', indeterminate: false }
 }
 
+const supportsStreamDownload = () => Boolean(window.showSaveFilePicker && window.ReadableStream && window.WritableStream)
+
 const resolveDownloadName = (response, fallback) => {
   const disposition = response.headers.get('Content-Disposition') || ''
   const utf8Match = disposition.match(/filename\\*=UTF-8''([^;]+)/i)
@@ -467,14 +444,13 @@ const goBack = () => {
 
 const formatTime = value => value ? String(value).replace('T', ' ').slice(0, 16) : '-'
 const formatSize = size => size ? `${(size / 1024 / 1024).toFixed(2)} MB` : '-'
-const fileTypeText = value => ({ DOCUMENT: '文档', VIDEO: '视频' }[value] || '未知类型')
-const assignmentText = value => ({ DRAFT: '草稿', PUBLISHED: '已发布', ARCHIVED: '已归档' }[value] || '未知状态')
+const fileTypeText = value => ({ DOCUMENT: '文档', VIDEO: '视频' }[value] || value || '-')
+const assignmentText = value => ({ DRAFT: '草稿', PUBLISHED: '已发布', ARCHIVED: '已归档' }[value] || value || '-')
 const assignmentTag = value => ({ PUBLISHED: 'success', ARCHIVED: 'info', DRAFT: 'warning' }[value] || '')
-const submissionText = status => ({ DRAFT: '未提交', SUBMITTED: '已提交', LATE: '逾期', GRADED: '已评分', RETURNED: '已退回' }[status] || '未知状态')
+const submissionText = status => ({ DRAFT: '未提交', SUBMITTED: '已提交', LATE: '逾期', GRADED: '已评分', RETURNED: '已退回' }[status] || status || '-')
 const submissionTag = status => ({ SUBMITTED: 'warning', LATE: 'danger', GRADED: 'success', RETURNED: 'info' }[status] || '')
 
 onMounted(loadPage)
-onUnmounted(stopPolling)
 </script>
 
 <style scoped>

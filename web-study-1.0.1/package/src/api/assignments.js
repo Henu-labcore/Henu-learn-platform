@@ -93,18 +93,6 @@ export function getAdminSubmissionBatchDownloadInfo(id, params = {}) {
   return request({ url: `/admin/assignments/${id}/submissions/files/download-info`, method: 'get', params })
 }
 
-export function createAdminSubmissionDownloadTask(id, params = {}) {
-  return request({ url: `/admin/assignments/${id}/submissions/files/download-tasks`, method: 'post', params })
-}
-
-export function getAdminSubmissionDownloadTask(id, downloadId) {
-  return request({ url: `/admin/assignments/${id}/submissions/files/download-tasks/${downloadId}`, method: 'get' })
-}
-
-export function getAdminSubmissionDownloadTicket(id, downloadId) {
-  return request({ url: `/admin/assignments/${id}/submissions/files/download-tasks/${downloadId}/ticket`, method: 'post' })
-}
-
 export function getAdminSubmission(id) {
   return request({ url: `/admin/assignments/submissions/${id}`, method: 'get' })
 }

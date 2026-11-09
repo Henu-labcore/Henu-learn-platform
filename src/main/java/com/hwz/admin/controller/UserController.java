@@ -50,7 +50,7 @@ public class UserController {
         accessService.requireAdmin();
         User user = userService.findByUserId(userId);
         if (user == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
         return Result.ok(toUserMap(user));
     }
@@ -59,14 +59,14 @@ public class UserController {
     public Result<Map<String, Object>> createUser(@RequestBody CreateUserRequest request) {
         User operator = accessService.requireAdmin();
         if (request == null || !StringUtils.hasText(request.getUsername())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入用户名");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Username is required");
         }
         if (!StringUtils.hasText(request.getPassword())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入密码");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password is required");
         }
         validateNewPassword(request.getPassword());
         if (StringUtils.hasText(request.getRole())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "角色变更需要通过专用审批流程");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Role changes require a dedicated approval flow");
         }
 
         try {
@@ -93,20 +93,20 @@ public class UserController {
         User operator = accessService.requireAdmin();
         User user = userService.findByUserId(userId);
         if (user == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
 
         if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请求内容不能为空");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
         }
         if (StringUtils.hasText(request.getRole())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "角色变更需要通过专用审批流程");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Role changes require a dedicated approval flow");
         }
         if (StringUtils.hasText(request.getStatus())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "账号状态变更需要通过专用审批流程");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Status changes require a dedicated approval flow");
         }
         if (StringUtils.hasText(request.getPassword())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "密码重置需要通过专用审计流程");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Password reset requires a dedicated audited flow");
         }
         if (StringUtils.hasText(request.getDisplayName())) {
             user.setDisplayName(request.getDisplayName().trim());
@@ -133,11 +133,11 @@ public class UserController {
     public Result<Map<String, Object>> updateMe(@RequestBody UpdateUserRequest request) {
         User currentUser = accessService.requireUser();
         if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请求内容不能为空");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
         }
         User user = userService.findByUserId(currentUser.getId());
         if (user == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
 
         if (StringUtils.hasText(request.getDisplayName())) {
@@ -150,14 +150,14 @@ public class UserController {
             user.setRealName(request.getRealName().trim());
         }
         if (StringUtils.hasText(request.getGrade())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能通过此接口修改年级");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Grade cannot be changed by this endpoint");
         }
         if (StringUtils.hasText(request.getPassword())) {
             if (!StringUtils.hasText(request.getOldPassword())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入原密码");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Old password is required");
             }
             if (!userService.validatePassword(request.getOldPassword(), user.getPassword())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "原密码不正确");
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Old password is incorrect");
             }
             validateNewPassword(request.getPassword());
         }
@@ -174,7 +174,7 @@ public class UserController {
     @DeleteMapping("/{userId}")
     public Result<Void> deleteUser(@PathVariable Long userId) {
         accessService.requireAdmin();
-        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "删除用户需要通过专用审计流程");
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User deletion requires a dedicated audited flow");
     }
 
     private Map<String, Object> toUserMap(User user) {
@@ -207,7 +207,7 @@ public class UserController {
         try {
             return User.Role.valueOf(role.trim().toUpperCase());
         } catch (Exception ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "用户角色不正确");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid role");
         }
     }
 
@@ -215,13 +215,13 @@ public class UserController {
         try {
             return User.Status.valueOf(status.trim().toUpperCase());
         } catch (Exception ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "用户状态不正确");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status");
         }
     }
 
     private void validateNewPassword(String password) {
         if (password == null || password.length() < 12) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "密码长度至少需要 12 位");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must be at least 12 characters");
         }
         boolean hasLower = false;
         boolean hasUpper = false;
@@ -241,7 +241,7 @@ public class UserController {
             }
         }
         if (!hasLower || !hasUpper || !hasDigit || !hasSpecial) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "密码需包含大写字母、小写字母、数字和特殊字符");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must contain uppercase letters, lowercase letters, numbers, and special characters");
         }
     }
 

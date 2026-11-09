@@ -100,7 +100,7 @@ public class LearnAnalyticsServiceImpl implements LearnAnalyticsService {
             return DEFAULT_DAYS;
         }
         if (days <= 0 || days > MAX_DAYS) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "统计天数不正确");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid days/limit");
         }
         return days;
     }
@@ -110,7 +110,7 @@ public class LearnAnalyticsServiceImpl implements LearnAnalyticsService {
             return DEFAULT_LIMIT;
         }
         if (limit <= 0 || limit > MAX_LIMIT) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "返回条数不正确");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid days/limit");
         }
         return limit;
     }

@@ -187,7 +187,7 @@ public class LearningContentAdminService {
         LearningItem existing = getItemOrThrow(itemId);
         String normalizedStatus = normalizeStatus(status);
         if (STATUS_PUBLISHED.equals(normalizedStatus) && !hasTemplate(existing)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "发布学习项前必须上传实验模板");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Publish requires a notebook template");
         }
         existing.setStatus(normalizedStatus);
         existing.setUpdatedAt(LocalDateTime.now());
@@ -220,7 +220,7 @@ public class LearningContentAdminService {
         if (fallback.exists()) {
             return fallback;
         }
-        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "实验模板不存在");
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Experiment notebook not found");
     }
 
     public boolean hasTemplate(LearningItem item) {
@@ -236,11 +236,11 @@ public class LearningContentAdminService {
 
     public LearningItem getItemOrThrow(Long itemId) {
         if (itemId == null || itemId <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "学习项编号不正确");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid learning item id");
         }
         LearningItem item = learningItemMapper.selectById(itemId);
         if (item == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "学习项不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Learning item not found");
         }
         return item;
     }
@@ -285,10 +285,10 @@ public class LearningContentAdminService {
 
     private void validateSaveRequest(AdminLearningItemSaveRequest request) {
         if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请求内容不能为空");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
         }
         if (!StringUtils.hasText(request.getTitle())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入学习项标题");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Title is required");
         }
     }
 
@@ -328,7 +328,7 @@ public class LearningContentAdminService {
         try {
             return cleaned.isEmpty() ? null : objectMapper.writeValueAsString(cleaned);
         } catch (Exception ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "学习目标格式处理失败");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Failed to serialize objectives");
         }
     }
 
@@ -364,7 +364,7 @@ public class LearningContentAdminService {
         try {
             return cleaned.isEmpty() ? null : objectMapper.writeValueAsString(cleaned);
         } catch (Exception ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "学习特色格式处理失败");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Failed to serialize features");
         }
     }
 
@@ -388,7 +388,7 @@ public class LearningContentAdminService {
         if (STATUS_DRAFT.equals(normalized) || STATUS_PUBLISHED.equals(normalized) || STATUS_ARCHIVED.equals(normalized)) {
             return normalized;
         }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "学习项状态不正确");
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid learning item status");
     }
 
     private String normalizeExistingStatus(String status) {

@@ -7,7 +7,6 @@
           <el-icon><ArrowLeft /></el-icon>
           返回用户列表
         </el-button>
-        <el-button :icon="Download" :loading="exporting" @click="exportRecords">导出该学生记录</el-button>
       </div>
 
       <!-- 用户基本信息 -->
@@ -156,7 +155,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Download } from '@element-plus/icons-vue'
+import { ArrowLeft } from '@element-plus/icons-vue'
 import request from '@/api/request'
 
 const route = useRoute()
@@ -166,7 +165,6 @@ const userId = ref(String(route.params.userId || ''))
 const userInfo = ref(null)
 const userProgress = ref(null)
 const loading = ref(false)
-const exporting = ref(false)
 
 // 获取用户基本信息
 const fetchUserInfo = async () => {
@@ -238,31 +236,6 @@ const goBack = () => {
   router.back()
 }
 
-const exportRecords = async () => {
-  exporting.value = true
-  try {
-    const blob = await request.get('/learning-progress/admin/export', {
-      params: { userId: userId.value },
-      responseType: 'blob'
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    const studentName = userInfo.value?.displayName || userInfo.value?.username || `学生${userId.value}`
-    link.href = url
-    link.download = `${studentName}的学习记录-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
-    ElMessage.success('该学生的学习记录已导出')
-  } catch (error) {
-    console.error('导出学习记录失败:', error)
-    ElMessage.error('导出学习记录失败')
-  } finally {
-    exporting.value = false
-  }
-}
-
 onMounted(() => {
   if (userId.value) {
     fetchUserInfo()
@@ -285,9 +258,6 @@ onMounted(() => {
 
 .back-button {
   margin-bottom: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 
 .user-info-card {

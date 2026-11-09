@@ -10,8 +10,8 @@ export default defineConfig({
     }
   },
   server: {
-    host: '0.0.0.0',
-    port: 5173,
+    host: '127.0.0.1',
+    port: 3000,
     proxy: {
       '/api': {
         // 开发环境代理到本地后端 (本地开发用)

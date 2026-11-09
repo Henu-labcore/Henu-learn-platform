@@ -495,7 +495,7 @@ const formatSize = value => {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
-const materialTypeText = value => ({ IMAGE: '图片', VIDEO: '视频', DOCUMENT: '文档' }[value] || '未知类型')
+const materialTypeText = value => ({ IMAGE: '图片', VIDEO: '视频', DOCUMENT: '文档' }[value] || value || '-')
 const resolveDownloadName = (response, fallback) => {
   const disposition = response.headers.get('Content-Disposition') || ''
   const utf8Match = disposition.match(/filename\\*=UTF-8''([^;]+)/i)
@@ -505,7 +505,7 @@ const resolveDownloadName = (response, fallback) => {
   const asciiMatch = disposition.match(/filename="?([^";]+)"?/i)
   return asciiMatch?.[1] || fallback || 'download'
 }
-const assignmentText = value => ({ DRAFT: '草稿', PUBLISHED: '已发布', ARCHIVED: '已归档' }[value] || '未知状态')
+const assignmentText = value => ({ DRAFT: '草稿', PUBLISHED: '已发布', ARCHIVED: '已归档' }[value] || value)
 const assignmentTag = value => ({ PUBLISHED: 'success', ARCHIVED: 'info', DRAFT: 'warning' }[value] || '')
 
 onMounted(loadAssignments)

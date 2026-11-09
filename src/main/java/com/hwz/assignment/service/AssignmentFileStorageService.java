@@ -33,7 +33,7 @@ public class AssignmentFileStorageService {
 
     private final Path storageRoot;
 
-    public AssignmentFileStorageService(@Value("${labcore.assignment.upload-dir:data/assignment-submissions}") String storageDir) {
+    public AssignmentFileStorageService(@Value("${labcore.assignment.upload-dir:runtime/assignment-submissions}") String storageDir) {
         this.storageRoot = Paths.get(storageDir).toAbsolutePath().normalize();
     }
 
