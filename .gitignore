@@ -6,6 +6,7 @@ target/
 web-study-1.0.1/package/dist/
 web-study-1.0.1/package/node_modules/
 web-study-1.0.1/package/.npm-cache/
+web-study-1.0.1/package/.vite/
 *.map
 
 # Runtime and local logs
@@ -22,8 +23,10 @@ web-study-1.0.1/package/.env.*
 
 # Deployment bundles and sensitive maintenance scripts
 deploy/*.zip
+deploy/labcore-*/
 deploy/labcore-hotfix-*/
 deploy/**/backend/*.jar
+deploy/**/frontend/dist/
 deploy/reset-admin-password.sh
 ops/*.zip
 ops/**/backend/*.jar
@@ -35,6 +38,7 @@ ops/labcore-hotfix-20260614/data/
 ops/labcore-learning-json-import/
 
 # Local test/extracted artifacts
+test-results/
 boottest.*
 mobile-test.html
 start-mobile-test.ps1
@@ -57,9 +61,6 @@ src/main/resources/db/labcore_handover_*.sha256
 .codex/
 .codex-run/
 .codex-gitconfig
-
-# 旧 Git 历史备份（重建仓库时保留，确认无误后可删除）
-.git.old/
 
 # Runtime uploaded user files, temp archives and extracted deployment packages
 data/assignment-submissions/

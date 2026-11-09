@@ -19,6 +19,10 @@
         >
           <el-icon><MoreFilled /></el-icon>
         </button>
+        <!-- 收藏固定在卡片上，不放入会旋转/缩放的 knowledge-icon 中。 -->
+        <button class="favorite-toggle" type="button" :aria-label="favoritesStore.isFavorited(item.id) ? '取消收藏' : '收藏'" :aria-pressed="favoritesStore.isFavorited(item.id)" :disabled="favoritesStore.loading || favoritesStore.pending.includes(String(item.id))" @click.stop="toggleFavorite(item.id)">
+          <el-icon :size="21"><StarFilled v-if="favoritesStore.isFavorited(item.id)"/><Star v-else/></el-icon>
+        </button>
         <div class="knowledge-icon">
           <el-icon :size="24"><Document /></el-icon>
         </div>
@@ -41,7 +45,10 @@
 </template>
 
 <script setup>
-import { Loading, Document, MoreFilled } from '@element-plus/icons-vue'
+import { Loading, Document, MoreFilled, Star, StarFilled } from '@element-plus/icons-vue'
+import { useFavoritesStore } from '@/stores/studyStore'
+const favoritesStore = useFavoritesStore()
+const toggleFavorite = async id => { try { await favoritesStore.toggle(id) } catch { /* 原请求层统一提示失败，不伪造收藏成功。 */ } }
 
 defineProps({
   loading: {
@@ -58,6 +65,25 @@ const emit = defineEmits(['show-details', 'open-details', 'start-learning'])
 </script>
 
 <style scoped>
+.favorite-toggle {
+  position: absolute;
+  right: 48px;
+  top: 12px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #d97706;
+  cursor: pointer;
+  padding: 0;
+  /* 空心/实心和请求中的状态仅改变图案/透明度，不改变位置和尺寸。 */
+  transform: none;
+  transition: none;
+}
+.favorite-toggle:disabled { opacity: .5; cursor: wait; }
 .knowledge-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -109,7 +135,8 @@ const emit = defineEmits(['show-details', 'open-details', 'start-learning'])
 }
 
 .knowledge-card:hover {
-  transform: translateY(-4px);
+  /* 卡片不再上移，确保点击收藏时星标的屏幕位置固定；保留原阴影和图标效果。 */
+  transform: none;
   box-shadow: 0 12px 24px rgba(30, 136, 229, 0.15);
   border-color: #1E88E5;
 }

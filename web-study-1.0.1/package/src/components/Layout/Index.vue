@@ -7,6 +7,7 @@
       </div>
 
       <div class="user-info-container">
+        <LearningPlanNotifications />
         <el-dropdown trigger="click" @command="handleUserCommand">
           <div class="user-avatar">
             {{ authStore.displayName.charAt(0).toUpperCase() }}
@@ -18,6 +19,8 @@
               <el-dropdown-item v-if="authStore.isAdmin" command="content">学习内容管理</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="dashboard">平台学习总览</el-dropdown-item>
               <el-dropdown-item v-if="authStore.isAdmin" command="assignments-admin">考核管理</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" command="maintenance">项目维护</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.isAdmin" command="plan-risks">学习计划风险</el-dropdown-item>
               <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -101,6 +104,34 @@
             <el-icon><DocumentChecked /></el-icon>
             <span>能力考核</span>
           </router-link>
+
+          <!-- 新入口放在能力考核下面，复用同一 menu-item 样式和选中规则。 -->
+          <router-link
+            to="/favorites"
+            class="menu-item"
+            :class="{ active: route.path === '/favorites' }"
+          >
+            <el-icon><Star /></el-icon>
+            <span>我的收藏</span>
+          </router-link>
+
+          <router-link
+            to="/learning-plan"
+            class="menu-item"
+            :class="{ active: route.path === '/learning-plan' }"
+          >
+            <el-icon><Calendar /></el-icon>
+            <span>学习计划</span>
+          </router-link>
+
+          <router-link
+            to="/contributors"
+            class="menu-item"
+            :class="{ active: route.path === '/contributors' }"
+          >
+            <el-icon><UserFilled /></el-icon>
+            <span>项目贡献者</span>
+          </router-link>
         </div>
       </aside>
 
@@ -116,12 +147,20 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
-import { ArrowDown, DataAnalysis, DocumentChecked, Menu, Reading } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, DataAnalysis, DocumentChecked, Menu, Reading, Star, UserFilled } from '@element-plus/icons-vue'
+import { useFavoritesStore } from '@/stores/studyStore'
+import LearningPlanNotifications from '@/components/knowledge/LearningPlanNotifications.vue'
 import { getLearningItems } from '@/api/knowledge'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const favoritesStore = useFavoritesStore()
+// 与原账号状态绑定；退出/切换账号时清空本模块缓存，不修改原登录逻辑。
+watch(() => [authStore.isAuthenticated, authStore.user?.userId ?? authStore.user?.id], () => {
+  favoritesStore.reset()
+  if (authStore.isAuthenticated) favoritesStore.load().catch(() => {})
+}, { immediate: true })
 const categories = ref([])
 const selectedCategory = ref('')
 const categoriesLoading = ref(false)
@@ -203,6 +242,10 @@ const handleLogout = async () => {
 }
 
 const handleUserCommand = command => {
+  if (command === 'plan-risks') {
+    router.push('/admin-learning-risks').catch(() => {})
+    return
+  }
   if (command === 'profile') {
     router.push('/profile').catch(() => {})
     return
@@ -221,6 +264,10 @@ const handleUserCommand = command => {
   }
   if (command === 'assignments-admin') {
     router.push('/admin-assignments').catch(() => {})
+    return
+  }
+  if (command === 'maintenance') {
+    router.push('/maintenance').catch(() => {})
     return
   }
   if (command === 'logout') {

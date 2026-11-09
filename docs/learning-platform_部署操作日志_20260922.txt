@@ -1,0 +1,670 @@
+Learning Platform 部署操作日志
+日期：2026-09-22
+项目：Learning Platform / LabCore
+用途：记录本次「贡献者功能」的本地构建、部署包制作、数据库迁移、应用替换与验证的完整过程，
+      以及遇到的问题、处置方式和回滚信息，供后续维护者参考。
+
+======================================================================
+一、操作背景
+======================================================================
+
+本次主要目标：
+
+1. 新增「项目贡献者」功能：前台展示贡献者名单，后台由管理员维护；
+2. 新增 contributor 数据表（本次唯一的数据库结构变更）；
+3. 将本地开发成果（含 8 月 19 日之后未部署的改动）构建并部署到生产；
+4. 保证部署可回滚，保留完整备份；
+5. 记录与上一次部署（2026-08-19）的差异。
+
+本次涉及的主要生产路径：
+
+项目根目录：
+/opt/learning-platform/
+
+后端：
+/opt/learning-platform/backend/
+
+前端：
+/opt/learning-platform/frontend/
+
+学生提交数据：
+/opt/learning-platform/data/assignment-submissions/
+
+批量下载临时 ZIP：
+/opt/learning-platform/data/assignment-download-temp/
+
+MySQL：
+/opt/learning-platform/mysql/
+
+Nginx：
+/etc/nginx/sites-available/learning-platform
+/etc/nginx/sites-enabled/learning-platform
+
+本次部署包上传目录：
+/root/upload/labcore-0922/
+
+重要提醒：本文档不记录任何数据库密码、令牌密钥或其他凭据。
+
+
+======================================================================
+二、与 2026-08-19 那次部署的关键差异
+======================================================================
+
+本次部署与上次有一个本质区别，不能照搬上次的策略：
+
+                        2026-08-19 部署           2026-09-22 部署（本次）
+数据库                  完全不动（不 ALTER、       必须执行迁移，新增
+                        不 CREATE、不 DROP）       contributor 表
+部署内容                前端为主 + 后端 JAR        后端 JAR + 前端 dist
+主要风险                Nginx 大文件代理缓冲       迁移漏执行导致贡献者接口
+                                                  报「表不存在」
+
+结论：本次必须执行数据库迁移，且迁移前必须完成数据库备份。
+      「数据库不动」这一条本次不适用。
+
+
+======================================================================
+三、部署前线上状态确认
+======================================================================
+
+1. 线上运行的 JAR：
+
+命令：
+ls -lh /opt/learning-platform/backend/labcore.jar
+
+结果：
+-rw-r--r-- 1 root root 34M Aug 19 03:31 labcore.jar
+
+SHA256：
+37e6c1521502bba2ca68deb4ff3f2537be894280b280c1a7fb0a9c365209de81
+
+2. 运行中的进程：
+
+命令：
+ps -ef | grep '[j]ava.*labcore.jar'
+
+结果：
+root 476601 1 0 Aug19 ? 01:21:02 java -Duser.timezone=Asia/Shanghai
+  -jar /opt/learning-platform/backend/labcore.jar
+  --spring.config.location=/opt/learning-platform/backend/application.properties
+
+说明：该进程自 8 月 19 日起持续运行，采用的是 8 月 19 日构建的旧版本。
+
+3. 端口监听：
+
+命令：
+ss -lntp | grep ':18080'
+
+结果：
+LISTEN 0 100 *:18080 *:* users:(("java",pid=476601,fd=10))
+
+4. 数据库状态（迁移前）：
+
+线上库表数量：12
+业务数据量：
+  learning_item（学习卡片）        49
+  sys_user（平台用户）             67
+  assignment（能力考核）            5
+  assignment_submission（提交）   126
+
+说明：以上数据量与本地恢复的生产数据一致（本地 assignment 为 6 条，
+      多出的一条为本地测试时创建的草稿，属正常差异）。
+
+
+======================================================================
+四、本地构建与部署包制作
+======================================================================
+
+以下操作在本地开发机执行。
+
+1. 确认 Git 状态（部署必须与仓库一致）：
+
+命令：
+git branch --show-current
+git log --oneline -1
+git status --short
+
+结果：
+分支：main
+提交：6ddf5e5 style: 移除维护页副标题及对应样式
+工作区：干净，与远程完全同步
+
+2. 构建后端：
+
+命令：
+mvn clean package -DskipTests
+
+产物：
+target/LabCore-0.0.1-SNAPSHOT.jar
+
+注意：Maven 默认产物名带版本号，与线上运行时使用的 labcore.jar 不同名，
+      这是刻意设计，用于区分「待部署产物」与「线上运行版本」。
+
+大小与指纹：
+34.1 MB
+SHA256 a976e72b02648c7b6f079fea6e92d0a59d14fd4b501ec6f9bc78cbc9c061a030
+
+3. JAR 内容校验（确认新功能已打包）：
+
+命令（本地）：
+jar tf target/LabCore-0.0.1-SNAPSHOT.jar | grep -E 'contributor|learning-templates'
+
+结果：
+contributor 相关类            6 个（controller 2 / dto 4 / entity / mapper / service）
+learning-templates 模板       13 个
+static/experiments 实验       41 个
+db/migrations/202609_contributor.sql  已打包
+LabCoreApplication.class      已就位
+总条目数                      1105
+
+4. 构建前端：
+
+命令：
+cd web-study-1.0.1/package
+npm run build
+
+产物：
+web-study-1.0.1/package/dist/
+
+新增页面产物：
+AdminMaintenance-BsdbmTTh.js
+AdminMaintenance-RAz6aRod.css
+Contributors-BU6gsCvd.js
+Contributors-BDN1wxeT.css
+
+前端 dist 文件总数：43（assets 目录 42）
+
+5. 组装部署包：
+
+目录结构：
+labcore-0922/
+├── backend/
+│   └── app.jar          34.1 MB（构建产物重命名，保持部署规范）
+├── frontend/
+│   └── dist/            43 个文件
+├── db/
+│   └── migration.sql    2351 字节（202609_contributor.sql）
+└── COMMIT.txt           构建信息与提交哈希
+
+部署包压缩后：labcore-0922.zip  32.2 MB
+
+部署包中的 JAR 命名说明：
+  包内命名为 app.jar，部署时复制为 labcore.jar。
+  原因：线上启动脚本、进程检测命令均按 labcore.jar 匹配，
+        若改名会导致 pgrep / ps 找不到进程，影响运维与回滚。
+  Spring Boot 本身不关心 JAR 文件名。
+
+
+======================================================================
+五、上传与部署包校验
+======================================================================
+
+上传位置：/root/upload/labcore-0922/
+
+1. 确认包内文件：
+
+命令：
+cd /root/upload/labcore-0922
+find . -maxdepth 3 -type f | sort
+
+结果：
+./backend/app.jar
+./COMMIT.txt
+./db/migration.sql
+./frontend/dist/index.html
+
+2. 大小确认：
+
+命令：
+ls -lh backend/app.jar db/migration.sql
+
+结果：
+35M   backend/app.jar
+2.3K  db/migration.sql
+
+3. 前端完整性校验（重要，传输系统曾出现大文件截断）：
+
+命令：
+find frontend/dist -type f | wc -l
+ls frontend/dist/assets/ | wc -l
+ls frontend/dist/assets/ | grep -E 'AdminMaintenance|Contributors'
+
+结果：
+43                  （与本地一致）
+42                  （assets 目录）
+AdminMaintenance-BsdbmTTh.js
+AdminMaintenance-RAz6aRod.css
+Contributors-BU6gsCvd.js
+Contributors-BDN1wxeT.css
+
+4. JAR 指纹校验：
+
+命令：
+sha256sum /opt/learning-platform/backend/labcore.jar /root/upload/labcore-0922/backend/app.jar
+
+结果：
+37e6c1521502bba2ca68deb4ff3f2537be894280b280c1a7fb0a9c365209de81  线上旧版
+a976e72b02648c7b6f079fea6e92d0a59d14fd4b501ec6f9bc78cbc9c061a030  待部署新版
+
+说明：新版指纹与本地构建产物完全一致，证明传输无损坏。
+
+
+======================================================================
+六、部署前备份
+======================================================================
+
+1. 建立本次备份目录：
+
+命令：
+VERSION=20260922
+APP_DIR=/opt/learning-platform
+BACKUP_DIR=$APP_DIR/backup/release-$VERSION
+mkdir -p "$BACKUP_DIR"
+
+备份目录：
+/opt/learning-platform/backup/release-20260922/
+
+2. 备份应用文件：
+
+命令：
+cp -a "$APP_DIR/backend/labcore.jar" "$BACKUP_DIR/labcore.jar"
+cp -a "$APP_DIR/backend/application.properties" "$BACKUP_DIR/application.properties"
+cp -a "$APP_DIR/frontend/dist" "$BACKUP_DIR/frontend-dist"
+
+结果：
+application.properties   1.7K
+frontend-dist/           目录
+labcore.jar              34M
+合计约 34M
+
+3. 备份数据库（本次必须执行）：
+
+命令（单行，避免反斜杠续行被终端拆开）：
+/opt/learning-platform/mysql/bin/mysqldump -uroot -p -h127.0.0.1 -P3306 --single-transaction --routines --triggers --databases labcore > "$BACKUP_DIR/labcore.sql"
+
+结果：
+-rw-r--r-- 1 root root 1.8M Sep 22 13:56 labcore.sql
+
+4. 备份完整性校验：
+
+命令：
+test -s "$BACKUP_DIR/labcore.sql" && echo "DB_BACKUP_OK"
+grep -c 'CREATE TABLE' "$BACKUP_DIR/labcore.sql"
+grep -m1 'INSERT INTO `sys_user`' "$BACKUP_DIR/labcore.sql" | cut -c1-120
+
+结果：
+DB_BACKUP_OK
+12                       （迁移前的表数量，符合预期）
+INSERT INTO `sys_user` VALUES (1,'admin','$2a$10$...   （含真实数据，非空结构）
+
+说明：CREATE TABLE 为 12 而不是 13，因为 contributor 表此时尚未创建。
+      若此处显示 13，说明迁移已被执行过，需先确认再继续。
+
+
+======================================================================
+七、数据库迁移
+======================================================================
+
+1. 查看迁移脚本（执行前必须确认不是初始化或演示脚本）：
+
+命令：
+sed -n '1,45p' "$PKG_DIR/db/migration.sql"
+
+脚本要点：
+  - 创建 contributor 表，12 个字段；
+  - 通过 information_schema.TABLES 做存在性检查，幂等可重复执行；
+  - 使用 PREPARE / EXECUTE / DEALLOCATE PREPARE 动态执行 DDL；
+  - 外键 fk_contributor_user 指向 sys_user(user_id)；
+  - ON DELETE SET NULL ON UPDATE CASCADE；
+  - 不涉及 sys_user 表结构，不改动任何现有表。
+
+2. 执行迁移：
+
+命令：
+/opt/learning-platform/mysql/bin/mysql -uroot -p -h127.0.0.1 -P3306 labcore < "$PKG_DIR/db/migration.sql"
+
+结果：无报错。（首次执行走 CREATE TABLE 分支，无输出属正常）
+
+3. 迁移结果验证：
+
+命令：
+/opt/learning-platform/mysql/bin/mysql -uroot -p -h127.0.0.1 -P3306 -D labcore -e "SHOW TABLES LIKE 'contributor'; SELECT COUNT(*) AS tbl_count FROM information_schema.tables WHERE table_schema='labcore';"
+
+结果：
+contributor 表已创建
+表总数：13（迁移前 12）
+
+4. 业务数据未受影响验证：
+
+命令：
+/opt/learning-platform/mysql/bin/mysql -uroot -p -h127.0.0.1 -P3306 -D labcore -e "SELECT (SELECT COUNT(*) FROM learning_item) AS cards, (SELECT COUNT(*) FROM sys_user) AS users, (SELECT COUNT(*) FROM assignment) AS assignments, (SELECT COUNT(*) FROM assignment_submission) AS submissions;"
+
+结果：
+cards=49  users=67  assignments=5  submissions=126
+
+结论：与迁移前完全一致，迁移未影响任何业务数据。
+
+
+======================================================================
+八、应用替换与启动
+======================================================================
+
+1. 停止旧后端：
+
+命令：
+kill 476601
+sleep 6
+ps -ef | grep '[l]abcore.jar'
+ss -lntp | grep ':18080'
+
+情况说明：
+  停止过程比预期慢。执行 kill 后 6 秒进程仍在，但端口已释放；
+  继续等待约 18 秒后进程完全退出。
+  Spring Boot 优雅关闭在存在活跃连接时可能较慢，属正常现象。
+  若长时间不退出，可使用 kill -9 强制结束。
+
+最终结果：
+ps 与 ss 均无输出，确认进程已停止、端口已释放。
+
+2. 替换后端与前端：
+
+命令：
+APP_DIR=/opt/learning-platform
+PKG_DIR=/root/upload/labcore-0922
+VERSION=20260922
+cp -a "$PKG_DIR/backend/app.jar" "$APP_DIR/backend/labcore.jar"
+rm -rf "$APP_DIR/frontend/dist.new"
+cp -a "$PKG_DIR/frontend/dist" "$APP_DIR/frontend/dist.new"
+mv "$APP_DIR/frontend/dist" "$APP_DIR/frontend/dist.old-$VERSION"
+mv "$APP_DIR/frontend/dist.new" "$APP_DIR/frontend/dist"
+ls -lh "$APP_DIR/backend/labcore.jar"
+test -f "$APP_DIR/frontend/dist/index.html" && echo "FRONTEND_DEPLOYED"
+
+结果：
+-rw-r--r-- 1 root root 35M Sep 22 13:53 labcore.jar
+FRONTEND_DEPLOYED
+
+说明：
+  前端采用「先复制到 dist.new，再切换」的方式，避免切换过程中出现目录不完整；
+  旧前端保留为 /opt/learning-platform/frontend/dist.old-20260922，便于回滚。
+
+3. 检查生产配置：
+
+命令：
+grep -E '^(server.port|spring.jackson.time-zone|labcore.learning.template-storage-dir|labcore.assignment.(upload|material|download-temp)-dir|spring.mvc.async.request-timeout|spring.servlet.multipart.max-(file|request)-size)=' /opt/learning-platform/backend/application.properties
+
+结果：
+server.port=18080
+labcore.learning.template-storage-dir=/opt/learning-platform/data/learning-templates
+labcore.assignment.upload-dir=/opt/learning-platform/data/assignment-submissions
+labcore.assignment.material-dir=/opt/learning-platform/data/assignment-materials
+spring.servlet.multipart.max-file-size=300MB
+spring.servlet.multipart.max-request-size=330MB
+spring.jackson.time-zone=Asia/Shanghai
+labcore.assignment.download-temp-dir=/opt/learning-platform/data/assignment-download-temp
+spring.mvc.async.request-timeout=3600000
+
+说明：
+  server.port=18080 为关键项。本地仓库的 application.properties 中并无此项
+  （默认 8080），线上端口完全依赖此文件。若该项丢失，后端会启动在 8080，
+  而 Nginx 反向代理指向 18080，将导致整站 502。
+  download-temp-dir 与 async.request-timeout 为 2026-08-19 大文件下载改造时新增，
+  本次确认仍存在。
+
+4. 启动后端：
+
+命令：
+cd /opt/learning-platform && nohup java -Duser.timezone=Asia/Shanghai -jar /opt/learning-platform/backend/labcore.jar --spring.config.location=/opt/learning-platform/backend/application.properties > /opt/learning-platform/logs/labcore-console.log 2>&1 & echo $! > /opt/learning-platform/backend/labcore.pid
+
+注意：必须先 cd /opt/learning-platform 再启动。
+      后端使用相对路径 data/... 定位文件存储目录，
+      工作目录不正确会导致「文件不存在」类问题。
+
+启动日志关键内容：
+Starting LabCoreApplication v0.0.1-SNAPSHOT using Java 11.0.32.1
+  ... started by root in /opt/learning-platform
+Tomcat initialized with port(s): 18080 (http)
+Tomcat started on port(s): 18080 (http) with context path ''
+Started LabCoreApplication in 4.318 seconds
+HikariPool-1 - Start completed.
+
+新进程 PID：3365254
+端口监听：*:18080 (java, pid=3365254)
+
+说明：线上运行环境为 Java 11.0.32.1，而本地构建环境为 JDK 1.8。
+      项目基于 Java 8 编译，在 Java 11 上运行正常，本次启动未出现兼容性告警。
+
+
+======================================================================
+九、部署后验证
+======================================================================
+
+1. Nginx 配置检查与重载：
+
+命令：
+nginx -t && nginx -s reload
+
+结果：
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+
+说明：本次未修改 Nginx 配置。2026-08-19 已为大文件批量下载添加
+      独立 location 并关闭 proxy_buffering，该配置沿用至今。
+
+2. 后端接口验证：
+
+命令：
+curl -s -o /dev/null -w "captcha=%{http_code}\n" http://127.0.0.1:18080/api/auth/captcha
+curl -s -o /dev/null -w "contributors=%{http_code}\n" http://127.0.0.1:18080/api/contributors
+curl -s http://127.0.0.1:18080/actuator/health
+
+结果：
+captcha=200
+contributors=401
+{"status":"UP"}
+
+说明：
+  contributors 返回 401 是正确结果，表示该接口已注册且鉴权拦截生效。
+  若返回 404 则说明新代码未加载，需要排查 JAR 替换或启动过程。
+  actuator/health 为 UP，包含数据库连通性检查。
+
+3. 公网站点验证：
+
+命令：
+curl -s -o /dev/null -w "public_site=%{http_code}\n" https://labcore.henu.edu.cn/
+
+结果：
+public_site=200
+
+4. 页面验收（需人工在浏览器完成）：
+
+访问 https://labcore.henu.edu.cn/ ，使用管理员账号登录，检查：
+  1) 左侧导航出现「项目贡献者」菜单项；
+  2) 点开后显示「暂无贡献者信息」（线上该表初始为空）；
+  3) 右上角头像菜单出现「项目维护」；
+  4) 在「项目维护」中新增一条贡献者，保存成功；
+  5) 返回「项目贡献者」页面，能看到新增的贡献者卡片；
+  6) 学习卡片列表（49 张）与在线练习可正常打开；
+  7) 能力考核学生端、管理员端功能正常。
+
+
+======================================================================
+十、遇到的问题与处置
+======================================================================
+
+问题 1：跳过「停止后端」直接替换了 JAR
+
+现象：
+  在未执行第 8 节步骤 1 的情况下，先完成了后端 JAR 与前端 dist 的替换。
+  旧进程（PID 476601）仍在运行，使用的仍是旧代码。
+
+风险：
+  Linux 下 JVM 运行期间会按需从 JAR 读取资源（例如加载 Notebook 模板）。
+  运行中的 JAR 文件被覆盖后 inode 发生变化，可能导致运行时读取异常。
+
+处置：
+  确认进程仍在运行后立即执行 kill 停止，再重新启动新版本。
+  最终服务运行正常，未观察到副作用。
+
+建议：
+  后续部署严格遵循「先停后端 → 再替换文件 → 最后启动」的顺序，
+  不要在旧进程仍运行时覆盖 JAR。
+
+问题 2：多行命令粘贴导致密码提示被吞
+
+现象：
+  多条带 -p 参数的 mysql 命令一次性粘贴时，出现
+  ERROR 1045 (28000): Access denied for user 'root'@'localhost' (using password: NO)。
+
+原因：
+  终端的密码交互提示出现在多行粘贴内容的中间，
+  导致后续内容与密码输入互相干扰，MySQL 收到空密码。
+
+处置：
+  单独复制执行每一条需要密码的命令，问题即消失。
+
+建议：
+  需要输入密码的命令一律单独一行粘贴，不要与其他命令合并。
+
+问题 3：kill 后进程未立即退出
+
+现象：
+  执行 kill 476601 后等待 6 秒，进程仍存在，但端口已释放。
+
+原因：
+  Spring Boot 优雅关闭需要等待现有请求完成，存在活跃连接时会较慢。
+
+处置：
+  继续等待约 18 秒后进程自行退出。
+  若长时间不退出，可使用 kill -9 强制结束。
+
+问题 4：mvn package 产物名与线上运行名不一致
+
+现象：
+  Maven 默认产物为 LabCore-0.0.1-SNAPSHOT.jar，而线上运行的文件名为 labcore.jar。
+
+处置：
+  在部署包中将其重命名为 app.jar，部署时再复制为 labcore.jar。
+  该命名方式沿用既有部署文档约定，目的是区分待部署产物与线上版本，
+  同时保证启动脚本与进程检测命令（按 labcore.jar 匹配）继续有效。
+
+
+======================================================================
+十一、重要回滚信息
+======================================================================
+
+本次部署备份目录：
+/opt/learning-platform/backup/release-20260922/
+
+包含：
+  labcore.jar              部署前的后端（2026-08-19 版本）
+  application.properties   部署前的生产配置
+  frontend-dist            部署前的前端
+  labcore.sql              部署前的完整数据库（含数据，1.8M）
+
+旧前端目录（未删除）：
+/opt/learning-platform/frontend/dist.old-20260922
+
+回滚步骤：
+
+1. 停止当前后端：
+   kill $(pgrep -f '/opt/learning-platform/backend/labcore.jar' | head -1)
+   sleep 8
+   ps -ef | grep '[l]abcore.jar'
+
+2. 恢复应用文件：
+   APP_DIR=/opt/learning-platform
+   VERSION=20260922
+   BACKUP_DIR=$APP_DIR/backup/release-$VERSION
+   cp -a "$BACKUP_DIR/labcore.jar" "$APP_DIR/backend/labcore.jar"
+   cp -a "$BACKUP_DIR/application.properties" "$APP_DIR/backend/application.properties"
+   rm -rf "$APP_DIR/frontend/dist"
+   cp -a "$BACKUP_DIR/frontend-dist" "$APP_DIR/frontend/dist"
+
+3. 重新启动：
+   cd /opt/learning-platform
+   nohup java -Duser.timezone=Asia/Shanghai -jar /opt/learning-platform/backend/labcore.jar --spring.config.location=/opt/learning-platform/backend/application.properties > /opt/learning-platform/logs/labcore-console.log 2>&1 &
+
+4. 重载 Nginx：
+   nginx -t && nginx -s reload
+
+关于数据库回滚：
+  contributor 是本次新增的表，多出来的表不会影响旧版本代码运行
+  （旧代码不访问该表）。因此一般情况下无需回滚数据库。
+  只有在确认必须回退数据库结构时，才执行：
+
+  /opt/learning-platform/mysql/bin/mysql -uroot -p -h127.0.0.1 -P3306 labcore < "$BACKUP_DIR/labcore.sql"
+
+  数据库回滚会覆盖部署之后产生的所有新业务数据，执行前必须确认。
+
+
+======================================================================
+十二、本次部署后的生产状态
+======================================================================
+
+[已完成] 本地构建后端 JAR 并校验内容
+[已完成] 本地构建前端 dist 并校验新增页面
+[已完成] 组装部署包 labcore-0922（含 COMMIT.txt）
+[已完成] 部署包上传与完整性校验（前端 43 文件、JAR 指纹一致）
+[已完成] 备份应用文件（jar / 配置 / 前端）
+[已完成] 备份数据库（1.8M，校验含 12 表与真实数据）
+[已完成] 执行数据库迁移，新增 contributor 表（表总数 12 → 13）
+[已完成] 验证业务数据未受影响（49 / 67 / 5 / 126）
+[已完成] 停止旧后端进程
+[已完成] 替换后端 JAR 与前端 dist
+[已完成] 校验生产配置（server.port=18080 等关键项）
+[已完成] 启动新后端（PID 3365254，端口 18080）
+[已完成] Nginx 配置检查与重载
+[已完成] 后端接口验证（captcha 200 / contributors 401 / health UP）
+[已完成] 公网站点可访问（200）
+[待处理] 浏览器页面验收（见第九节步骤 4）
+[待处理] 录入真实贡献者数据（当前该表为空）
+
+当前版本可作为现阶段生产基线。
+
+
+======================================================================
+十三、后续建议
+======================================================================
+
+1. 补充部署文档
+
+   docs/堡垒机部署流程.md 第 7 节已说明「数据库迁移脚本只在对应功能
+   首次上线时执行」。建议补充本次的具体提示：
+
+   贡献者功能（db/migration.sql，即 202609_contributor.sql）部署时
+   必须先执行迁移，否则 /api/contributors 会报「表不存在」。
+   该脚本幂等，可安全重复执行。
+
+2. 部署顺序纪律
+
+   本次出现「先替换、后停进程」的操作偏差。建议在部署文档中明确：
+   必须停止后端进程之后，才能覆盖 backend/labcore.jar。
+
+3. 待确认事项
+
+   - 生产环境 Java 版本为 11，本地构建使用 JDK 1.8。当前运行正常，
+     但建议在部署文档中记录该差异，便于后续排查兼容性问题。
+   - 前端 dist 当前包含 43 个文件，assets 目录 42 个文件，
+     可作为后续部署的完整性校验基线。
+
+4. 已知遗留数据问题
+
+   - 生产库 sys_user 中存在测试账号（如显示名为 SQL 注入片段的账号），
+     如无用途建议清理或降级。
+   - 生产库 assignment 表中存在测试草稿记录，如无用途建议清理。
+   - 库中存在 learning_item_backup_20260613060546 与
+     learning_step_backup_20260613060546 两张历史快照表，
+     约占全库三分之一体积，如确认无用可删除。
+
+5. 提交文件与数据库记录不一致
+
+   data/assignment-submissions 中的学生提交文件未随数据库一起交接。
+   数据库记录指向约 4.5 GB 的文件，若在无这些文件的环境中测试
+   管理员端「批量下载」功能，会因文件缺失而失败，属预期现象，
+   不是代码缺陷。
+
+
+======================================================================
+操作日志结束
+======================================================================
