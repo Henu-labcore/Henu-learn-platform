@@ -143,6 +143,14 @@
       :experiment-id="activeExperimentId"
       :experiment-title="activeExperimentTitle"
     />
+    <!-- 独立悬浮入口，不占用平台原有虚拟形象和学习内容区域。 -->
+    <AiStudyAssistant
+      v-if="knowledge"
+      :item-pk="knowledge.id"
+      :item-title="knowledge.title"
+      :current-step="currentStepContext"
+      scene="LEARNING"
+    />
   </div>
 </template>
 
@@ -153,6 +161,7 @@ import { Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getLearningItemDetail, completeLearningProgress, getLearningProgress, enterLearningProgress, addLearningTime } from '@/api/knowledge'
 import ExperimentOverlay from '@/components/ExperimentOverlay.vue'
+import AiStudyAssistant from '@/components/AiStudyAssistant.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -167,6 +176,8 @@ const isHeaderCompact = ref(false)
 const experimentVisible = ref(false)
 const activeExperimentId = ref(null)
 const activeExperimentTitle = ref('')
+// 当前知识点由页面滚动位置实时计算，供“解释当前知识点”等快捷操作使用。
+const currentStepIndex = ref(0)
 let activityTimer = null
 let heartbeatTimer = null
 let activeStart = 0
@@ -223,6 +234,12 @@ const completedRemark = computed(() => {
   return remark && remark.trim() ? remark : '暂无备注'
 })
 
+const currentStepContext = computed(() => {
+  const step = knowledge.value?.steps?.[currentStepIndex.value]
+  if (!step) return ''
+  return `第 ${currentStepIndex.value + 1} 个知识点：${step.title}`
+})
+
 // 处理标题，避免MathJax解析括号内容
 const processedTitle = computed(() => {
   if (!knowledge.value) return ''
@@ -266,7 +283,22 @@ const startPractice = () => {
 }
 
 const handleHeaderScroll = () => {
-  isHeaderCompact.value = window.scrollY >= 60
+  // 主布局的 .main-content 才是真正滚动容器，不能只读取 window.scrollY。
+  const contentScrollTop = document.querySelector('.main-content')?.scrollTop || window.scrollY || 0
+  isHeaderCompact.value = contentScrollTop >= 60
+  updateCurrentStep()
+}
+
+// 以视口上部约三分之一处作为阅读焦点，选择最后一个越过焦点线的知识步骤。
+const updateCurrentStep = () => {
+  const nodes = Array.from(document.querySelectorAll('.steps-list .step-item'))
+  if (!nodes.length) return
+  const focusLine = Math.max(160, window.innerHeight * 0.32)
+  let activeIndex = 0
+  nodes.forEach((node, index) => {
+    if (node.getBoundingClientRect().top <= focusLine) activeIndex = index
+  })
+  currentStepIndex.value = activeIndex
 }
 
 const getApiBaseUrl = () => {
@@ -469,7 +501,8 @@ const bindActivityListeners = () => {
   document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener('pagehide', handlePageHide)
   window.addEventListener('online', flushQueue)
-  window.addEventListener('scroll', handleActivity, { passive: true })
+  // scroll 不冒泡，使用捕获阶段才能监听 .main-content 等嵌套滚动容器。
+  window.addEventListener('scroll', handleActivity, { passive: true, capture: true })
   window.addEventListener('click', handleActivity, { passive: true })
   window.addEventListener('keydown', handleActivity)
   window.addEventListener('touchstart', handleActivity, { passive: true })
@@ -480,7 +513,7 @@ const unbindActivityListeners = () => {
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('pagehide', handlePageHide)
   window.removeEventListener('online', flushQueue)
-  window.removeEventListener('scroll', handleActivity)
+  window.removeEventListener('scroll', handleActivity, true)
   window.removeEventListener('click', handleActivity)
   window.removeEventListener('keydown', handleActivity)
   window.removeEventListener('touchstart', handleActivity)
@@ -540,7 +573,7 @@ const enterLearning = async (itemPk) => {
 
 onMounted(async () => {
   handleHeaderScroll()
-  window.addEventListener('scroll', handleHeaderScroll, { passive: true })
+  window.addEventListener('scroll', handleHeaderScroll, { passive: true, capture: true })
   const queryId = parseInt(route.query.id)
   const paramId = parseInt(route.params.itemPk)
   const id = queryId || paramId
@@ -574,6 +607,7 @@ onMounted(async () => {
 
   // 等待DOM更新后初始化MathJax（如果不存在或版本不支持，则尝试动态加载 MathJax v3）
   await nextTick()
+  updateCurrentStep()
 
   const loadMathJaxV3 = () => {
     return new Promise((resolve, reject) => {
@@ -654,7 +688,7 @@ onBeforeRouteLeave(async () => {
 onBeforeUnmount(async () => {
   await stopTimers()
   unbindActivityListeners()
-  window.removeEventListener('scroll', handleHeaderScroll)
+  window.removeEventListener('scroll', handleHeaderScroll, true)
 })
 </script>
 

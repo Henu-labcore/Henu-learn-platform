@@ -31,12 +31,8 @@
           <el-table-column prop="username" label="用户名" width="180" />
           <el-table-column prop="displayName" label="显示名" width="180" />
           <el-table-column prop="email" label="邮箱" min-width="180" />
-          <el-table-column label="角色" width="120">
-            <template #default="{ row }">{{ roleText(row.role) }}</template>
-          </el-table-column>
-          <el-table-column label="状态" width="120">
-            <template #default="{ row }">{{ statusText(row.status) }}</template>
-          </el-table-column>
+          <el-table-column prop="role" label="角色" width="120" />
+          <el-table-column prop="status" label="状态" width="120" />
           <el-table-column label="操作" width="220" align="center">
             <template #default="{ row }">
               <el-button type="primary" plain size="small" @click="openEditDialog(row)">编辑</el-button>
@@ -72,15 +68,15 @@
         </el-form-item>
         <el-form-item v-if="false" label="角色">
           <el-select v-model="form.role" placeholder="选择角色">
-            <el-option label="管理员" value="ADMIN" />
-            <el-option label="普通用户" value="USER" />
+            <el-option label="ADMIN" value="ADMIN" />
+            <el-option label="USER" value="USER" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="false" label="状态">
           <el-select v-model="form.status" placeholder="选择状态">
-            <el-option label="正常" value="ACTIVE" />
-            <el-option label="停用" value="INACTIVE" />
-            <el-option label="锁定" value="LOCKED" />
+            <el-option label="ACTIVE" value="ACTIVE" />
+            <el-option label="INACTIVE" value="INACTIVE" />
+            <el-option label="LOCKED" value="LOCKED" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="!isEdit" label="密码">
@@ -244,9 +240,6 @@ const isStrongPassword = password => {
     && /[^A-Za-z0-9]/.test(password)
 }
 
-const roleText = role => ({ ADMIN: '管理员', USER: '普通用户' }[role] || '未知角色')
-const statusText = status => ({ ACTIVE: '正常', INACTIVE: '停用', LOCKED: '锁定' }[status] || '未知状态')
-
 onMounted(() => {
   fetchUsers()
 })
@@ -288,14 +281,12 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 12px;
 }
 
 .panel-right {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
 }
 

@@ -155,30 +155,6 @@ public final class AssignmentDtos {
         private long totalBytes;
         private long maxBytes;
         private boolean allowed;
-        private boolean diskSpaceInsufficient;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class DownloadTicketResponse {
-        private String ticket;
-        private long expiresInSeconds;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class DownloadTaskResponse {
-        private String downloadId;
-        private String status;
-        private int processedFiles;
-        private int totalFiles;
-        private String fileName;
-        private long fileSize;
-        private String message;
     }
 
     @Data

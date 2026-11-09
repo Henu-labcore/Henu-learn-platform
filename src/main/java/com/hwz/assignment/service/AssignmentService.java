@@ -26,8 +26,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -39,7 +37,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -75,7 +72,6 @@ public class AssignmentService {
     private final UserMapper userMapper;
     private final AssignmentFileStorageService fileStorageService;
     private final AssignmentMaterialStorageService materialStorageService;
-    private final DownloadTempStore downloadTempStore;
 
     public AssignmentService(AssignmentMapper assignmentMapper,
                              AssignmentQuestionMapper questionMapper,
@@ -84,8 +80,7 @@ public class AssignmentService {
                              AssignmentSubmissionFileMapper fileMapper,
                              UserMapper userMapper,
                              AssignmentFileStorageService fileStorageService,
-                             AssignmentMaterialStorageService materialStorageService,
-                             DownloadTempStore downloadTempStore) {
+                             AssignmentMaterialStorageService materialStorageService) {
         this.assignmentMapper = assignmentMapper;
         this.questionMapper = questionMapper;
         this.materialMapper = materialMapper;
@@ -94,7 +89,6 @@ public class AssignmentService {
         this.userMapper = userMapper;
         this.fileStorageService = fileStorageService;
         this.materialStorageService = materialStorageService;
-        this.downloadTempStore = downloadTempStore;
     }
 
     public PageResponse<AssignmentDtos.AssignmentSummary> pageAdmin(String keyword, String status, long page, long pageSize) {
@@ -368,13 +362,11 @@ public class AssignmentService {
                 .map(AssignmentSubmissionFile::getFileSize)
                 .filter(size -> size != null && size > 0)
                 .reduce(0L, Long::sum);
-        boolean diskSpaceInsufficient = !downloadTempStore.hasEnoughSpace(totalBytes);
         return AssignmentDtos.BatchDownloadInfo.builder()
                 .fileCount(files.size())
                 .totalBytes(totalBytes)
                 .maxBytes(batchDownloadMaxBytes)
-                .diskSpaceInsufficient(diskSpaceInsufficient)
-                .allowed(!files.isEmpty() && totalBytes <= batchDownloadMaxBytes && !diskSpaceInsufficient)
+                .allowed(!files.isEmpty() && totalBytes <= batchDownloadMaxBytes)
                 .build();
     }
 
@@ -387,10 +379,6 @@ public class AssignmentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "\u9644\u4ef6\u603b\u5927\u5c0f\u8d85\u8fc7\u6279\u91cf\u4e0b\u8f7d\u4e0a\u9650\uff0c\u8bf7\u6309\u72b6\u6001\u7b5b\u9009\u6216\u9010\u4e2a\u4e0b\u8f7d");
         }
-        if (info.isDiskSpaceInsufficient()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "\u670d\u52a1\u5668\u4e34\u65f6\u5b58\u50a8\u7a7a\u95f4\u4e0d\u8db3\uff0c\u5f53\u524d\u65e0\u6cd5\u751f\u6210\u6279\u91cf\u4e0b\u8f7d\u6587\u4ef6\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u6216\u8054\u7cfb\u7ba1\u7406\u5458\u3002");
-        }
     }
 
     public String submissionFilesZipName(Long assignmentId) {
@@ -398,8 +386,7 @@ public class AssignmentService {
         return sanitizeZipName(assignment.getTitle()) + "-\u63d0\u4ea4\u9644\u4ef6.zip";
     }
 
-    public void writeSubmissionFilesZip(Long assignmentId, String status, OutputStream outputStream,
-                                        BiConsumer<Integer, Integer> progress) throws IOException {
+    public void writeSubmissionFilesZip(Long assignmentId, String status, OutputStream outputStream) throws IOException {
         Assignment assignment = getAssignmentOrThrow(assignmentId);
         List<AssignmentSubmission> submissions = listSubmissionsForZip(assignmentId, status);
         Map<Long, AssignmentSubmission> submissionMap = submissions.stream()
@@ -408,17 +395,11 @@ public class AssignmentService {
         Set<String> usedEntryNames = new HashSet<>();
         List<String> notes = new ArrayList<>();
         String rootDir = sanitizeZipName(assignment.getTitle());
-        int total = files.size();
-        int processed = 0;
 
         try (ZipOutputStream zip = new ZipOutputStream(outputStream)) {
             for (AssignmentSubmissionFile file : files) {
                 AssignmentSubmission submission = submissionMap.get(file.getSubmissionId());
                 if (submission == null) {
-                    processed++;
-                    if (progress != null) {
-                        progress.accept(processed, total);
-                    }
                     continue;
                 }
                 User student = userMapper.selectById(submission.getStudentId());
@@ -436,10 +417,6 @@ public class AssignmentService {
                 } catch (Exception ex) {
                     notes.add(entryName + "\uff1a\u6587\u4ef6\u4e0d\u5b58\u5728\u6216\u8bfb\u53d6\u5931\u8d25");
                 }
-                processed++;
-                if (progress != null) {
-                    progress.accept(processed, total);
-                }
             }
             if (!notes.isEmpty()) {
                 zip.putNextEntry(new ZipEntry(rootDir + "/\u4e0b\u8f7d\u8bf4\u660e.txt"));
@@ -447,18 +424,6 @@ public class AssignmentService {
                 zip.closeEntry();
             }
             zip.finish();
-        }
-    }
-
-    public File buildSubmissionFilesZip(Long assignmentId, String status,
-                                        BiConsumer<Integer, Integer> progress) throws IOException {
-        File tempFile = downloadTempStore.createTempZip();
-        try (FileOutputStream out = new FileOutputStream(tempFile)) {
-            writeSubmissionFilesZip(assignmentId, status, out, progress);
-            return tempFile;
-        } catch (IOException | RuntimeException ex) {
-            tempFile.delete();
-            throw ex;
         }
     }
 

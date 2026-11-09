@@ -74,7 +74,7 @@ public class LearningProgressServiceImpl implements LearningProgressService {
     public LearningProgressResponse createFirstEntry(Long userId, Long itemPk) {
         LearningItem item = learningItemMapper.selectById(itemPk);
         if (item == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "学习项不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Learning item not found");
         }
 
         LearningProgress existing = learningProgressMapper.selectOne(
@@ -106,7 +106,7 @@ public class LearningProgressServiceImpl implements LearningProgressService {
     public LearningProgressResponse completeLearning(Long userId, Long itemPk, String completeRemark) {
         LearningItem item = learningItemMapper.selectById(itemPk);
         if (item == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "学习项不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Learning item not found");
         }
 
         LearningProgress existing = learningProgressMapper.selectOne(
@@ -117,13 +117,13 @@ public class LearningProgressServiceImpl implements LearningProgressService {
         );
 
         if (existing == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "尚未开始学习该项目");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Learning has not started");
         }
 
         long learnedSec = existing.getLearnDurationSec() == null ? 0L : existing.getLearnDurationSec();
         long requiredSec = resolveRequiredCompleteSec(item);
         if (learnedSec < requiredSec) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "学习时长不足，暂时不能完成该项目");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient learning duration");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -139,21 +139,21 @@ public class LearningProgressServiceImpl implements LearningProgressService {
     @Override
     public LearningProgressTimeResponse updateLearnDuration(Long userId, Long itemPk, Long deltaSec) {
         if (deltaSec == null || deltaSec < 0 || deltaSec > MAX_DELTA_SEC) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "学习时长增量不正确");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid deltaSec");
         }
 
         LearningItem item = learningItemMapper.selectById(itemPk);
         if (item == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "学习项不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Learning item not found");
         }
 
         int updated = learningProgressMapper.addLearnDuration(userId, itemPk, deltaSec);
         if (updated <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "尚未开始学习该项目");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Learning has not started");
         }
         Long total = learningProgressMapper.selectLearnDurationSec(userId, itemPk);
         if (total == null) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "学习记录不存在");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Learning record not found");
         }
 
         return LearningProgressTimeResponse.builder()
@@ -164,16 +164,12 @@ public class LearningProgressServiceImpl implements LearningProgressService {
 
     @Override
     public AdminLearningSummaryResponse getAdminSummary() {
-        // 学习总览只统计普通学生，不包含管理员账号。
-        List<User> allUsers = userMapper.selectList(
-                new LambdaQueryWrapper<User>().eq(User::getRole, User.Role.USER));
+        // 获取所有用户
+        List<User> allUsers = userMapper.selectList(null);
         int totalUsers = allUsers.size();
 
-        List<Long> studentIds = allUsers.stream().map(User::getId).collect(Collectors.toList());
-        List<LearningProgress> allProgress = studentIds.isEmpty()
-                ? new ArrayList<>()
-                : learningProgressMapper.selectList(
-                        new LambdaQueryWrapper<LearningProgress>().in(LearningProgress::getUserId, studentIds));
+        // 获取所有学习进度记录
+        List<LearningProgress> allProgress = learningProgressMapper.selectList(null);
 
         // 统计数据
         Map<Long, AdminLearningSummaryResponse.UserProgressSummary> userStats = new HashMap<>();

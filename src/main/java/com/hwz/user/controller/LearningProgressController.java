@@ -11,11 +11,8 @@ import com.hwz.user.dto.LearningProgressCreateRequest;
 import com.hwz.common.Result;
 import com.hwz.user.service.LearningProgressService;
 import com.hwz.admin.service.AdminAccessService;
-import com.hwz.admin.service.LearningRecordExportService;
 import com.hwz.common.entity.User;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,11 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.util.UriUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @RestController
@@ -37,14 +30,10 @@ public class LearningProgressController {
 
     private final LearningProgressService learningProgressService;
     private final AdminAccessService accessService;
-    private final LearningRecordExportService learningRecordExportService;
 
-    public LearningProgressController(LearningProgressService learningProgressService,
-                                      AdminAccessService accessService,
-                                      LearningRecordExportService learningRecordExportService) {
+    public LearningProgressController(LearningProgressService learningProgressService, AdminAccessService accessService) {
         this.learningProgressService = learningProgressService;
         this.accessService = accessService;
-        this.learningRecordExportService = learningRecordExportService;
     }
 
     @GetMapping
@@ -82,23 +71,6 @@ public class LearningProgressController {
     public Result<UserProgressDetailResponse> getUserProgressDetail(@PathVariable Long userId) {
         accessService.requireAdmin();
         return Result.ok(learningProgressService.getUserProgressDetail(userId));
-    }
-
-    @GetMapping(value = "/admin/export", produces = "text/csv;charset=UTF-8")
-    public ResponseEntity<byte[]> exportLearningRecords(@RequestParam(required = false) String keyword,
-                                                        @RequestParam(required = false) Long userId,
-                                                        @RequestParam(required = false) List<Long> userIds) {
-        accessService.requireAdmin();
-        byte[] csv = learningRecordExportService.exportCsv(keyword, userId, userIds);
-        boolean selected = userIds != null && !userIds.isEmpty();
-        String scope = userId != null ? "学生-" + userId : selected ? "选中学生" : "全部";
-        String filename = "学习记录-" + scope + "-" + LocalDateTime.now()
-                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".csv";
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
-                .header("Content-Disposition", "attachment; filename*=UTF-8''" +
-                        UriUtils.encode(filename, StandardCharsets.UTF_8))
-                .body(csv);
     }
 
     @PostMapping("/enter")

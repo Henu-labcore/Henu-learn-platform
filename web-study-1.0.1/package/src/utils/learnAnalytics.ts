@@ -19,7 +19,7 @@ export const withDefaultCategory = (value) => {
 }
 
 export const withDefaultDifficulty = (value) => {
-  return value && String(value).trim() ? value : '未知'
+  return value && String(value).trim() ? value : 'Unknown'
 }
 
 export const calcRate = (completed = 0, total = 0) => {

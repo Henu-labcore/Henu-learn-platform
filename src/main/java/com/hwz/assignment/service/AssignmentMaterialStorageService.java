@@ -36,7 +36,7 @@ public class AssignmentMaterialStorageService {
 
     private final Path storageRoot;
 
-    public AssignmentMaterialStorageService(@Value("${labcore.assignment.material-dir:data/assignment-materials}") String storageDir) {
+    public AssignmentMaterialStorageService(@Value("${labcore.assignment.material-dir:runtime/assignment-materials}") String storageDir) {
         this.storageRoot = Paths.get(storageDir).toAbsolutePath().normalize();
     }
 

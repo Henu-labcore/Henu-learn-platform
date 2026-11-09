@@ -31,7 +31,7 @@ public class AccessTokenService {
 
     public String issue(Long userId) {
         if (userId == null || userId <= 0) {
-            throw new IllegalArgumentException("用户编号不正确");
+            throw new IllegalArgumentException("Invalid userId");
         }
         long expiresAt = Instant.now().getEpochSecond() + ttlSeconds;
         String payload = userId + ":" + expiresAt + ":" + UUID.randomUUID();
@@ -96,7 +96,7 @@ public class AccessTokenService {
             mac.init(new SecretKeySpec(secret, HMAC_ALGORITHM));
             return base64Url(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception ex) {
-            throw new IllegalStateException("登录令牌签发失败", ex);
+            throw new IllegalStateException("Unable to sign access token", ex);
         }
     }
 
@@ -115,6 +115,6 @@ public class AccessTokenService {
     }
 
     private ResponseStatusException unauthorized() {
-        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录令牌无效或已过期");
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token");
     }
 }

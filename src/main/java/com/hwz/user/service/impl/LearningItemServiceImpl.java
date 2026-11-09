@@ -110,14 +110,14 @@ public class LearningItemServiceImpl implements LearningItemService {
 
     private LearningItem getItemOrThrow(Long id) {
         if (id == null || id <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "学习项编号不正确");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid id");
         }
         LearningItem item = learningItemMapper.selectById(id);
         if (item == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "学习项不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Item not found");
         }
         if (!STATUS_PUBLISHED.equalsIgnoreCase(item.getStatus())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "学习项不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Item not found");
         }
         return item;
     }

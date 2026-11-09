@@ -41,7 +41,7 @@ public class UserService {
     public User createUser(String username, String password, String displayName,
                            String email, String realName, String grade) {
         if (findByUsername(username) != null) {
-            throw new RuntimeException("用户名已存在");
+            throw new RuntimeException("Username already exists");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -69,11 +69,11 @@ public class UserService {
                 String errorMessage = sqlEx.getMessage();
                 if (errorMessage != null && errorMessage.contains("username")) {
                     log.warn("Username unique constraint violated: {}", username);
-                    throw new RuntimeException("用户名已存在");
+                    throw new RuntimeException("Username already exists");
                 }
             }
             log.error("Failed to create user due to constraint violation: {}", username, e);
-            throw new RuntimeException("用户数据不符合要求，创建失败", e);
+            throw new RuntimeException("Failed to create user because of a data constraint", e);
         } catch (Exception e) {
             Throwable cause = e.getCause();
             if (cause instanceof SQLIntegrityConstraintViolationException) {
@@ -81,11 +81,11 @@ public class UserService {
                 String errorMessage = sqlEx.getMessage();
                 if (errorMessage != null && errorMessage.contains("username")) {
                     log.warn("Username unique constraint violated: {}", username);
-                    throw new RuntimeException("用户名已存在");
+                    throw new RuntimeException("Username already exists");
                 }
             }
             log.error("Failed to create user: {}", username, e);
-            throw new RuntimeException("创建用户失败：" + e.getMessage(), e);
+            throw new RuntimeException("Failed to create user: " + e.getMessage(), e);
         }
     }
 

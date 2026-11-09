@@ -35,7 +35,7 @@ public class ExperimentLaunchController {
     public Result<ExperimentLaunchResponse> launch(@PathVariable Long id) {
         LearningItem item = learningContentAdminService.getItemOrThrow(id);
         if (!LearningContentAdminService.STATUS_PUBLISHED.equalsIgnoreCase(item.getStatus())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "实验模板不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Experiment notebook not found");
         }
         String notebookFile = resolveNotebookFile(item);
         String workspaceId = resolveWorkspaceId(id);
@@ -61,11 +61,11 @@ public class ExperimentLaunchController {
     public ResponseEntity<Resource> notebook(@PathVariable Long id, @PathVariable String filename) {
         LearningItem item = learningContentAdminService.getItemOrThrow(id);
         if (!LearningContentAdminService.STATUS_PUBLISHED.equalsIgnoreCase(item.getStatus())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "实验模板不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Experiment notebook not found");
         }
         String notebookFile = resolveNotebookFile(item);
         if (!notebookFile.equals(filename)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "实验模板不存在：" + filename);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Experiment notebook not found: " + filename);
         }
         Resource resource = learningContentAdminService.resolveTemplateResource(item);
         return ResponseEntity.ok()
@@ -77,10 +77,10 @@ public class ExperimentLaunchController {
 
     private String resolveNotebookFile(LearningItem item) {
         if (item == null || item.getItemPk() == null || item.getItemPk() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "实验编号不正确");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid experiment id");
         }
         if (!learningContentAdminService.hasTemplate(item)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "实验模板不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Experiment notebook not found");
         }
         return "exp" + item.getItemPk() + ".ipynb";
     }

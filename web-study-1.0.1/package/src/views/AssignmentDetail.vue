@@ -432,7 +432,7 @@ const formatSize = value => {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
-const fileTypeText = value => ({ DOCUMENT: '文档', VIDEO: '视频' }[value] || '未知类型')
+const fileTypeText = value => ({ DOCUMENT: '文档', VIDEO: '视频' }[value] || value || '-')
 const submissionText = status => ({
   DRAFT: '未提交',
   SUBMITTED: '已提交',

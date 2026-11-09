@@ -73,7 +73,7 @@ public class LearnAnalyticsController {
     private Long requireUserId() {
         Long userId = BaseContext.getCurrentId();
         if (userId == null || userId <= 0) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid token");
         }
         return userId;
     }
